@@ -48,6 +48,7 @@ interface BatchItem {
   assigned_date: string;
   current_code: string;
   code_expiry: string;
+  qr_code_image?: string;
 }
 
 interface BatchItemsData {
@@ -119,8 +120,6 @@ const CodesManagement = () => {
   const [loadingItems, setLoadingItems] = useState(false);
   const [activeTab, setActiveTab] = useState<"in_stock" | "sold">("in_stock");
   const [searchTerm, setSearchTerm] = useState("");
-  const [savingSerial, setSavingSerial] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState<{ [serial: string]: any }>({});
 
   // ── Create folder modal ───────────────────────────────────────────────────
   const [showCreateFolder, setShowCreateFolder] = useState(false);
@@ -158,19 +157,19 @@ const CodesManagement = () => {
   // ── Open a batch folder ───────────────────────────────────────────────────
 
   const openBatchFolder = async (batch: CodeBatch) => {
-  setOpenBatch(batch);
-  setActiveTab("in_stock");
-  setSearchTerm("");
-  setLoadingItems(true);
-  try {
-    const data = await fetchBatchItems(batch.id);
-    setBatchItems(data);
-  } catch {
-    toast({ title: "Error", description: "Failed to load batch contents.", variant: "destructive" });
-  } finally {
-    setLoadingItems(false);
-  }
-};
+    setOpenBatch(batch);
+    setActiveTab("in_stock");
+    setSearchTerm("");
+    setLoadingItems(true);
+    try {
+      const data = await fetchBatchItems(batch.id);
+      setBatchItems(data);
+    } catch {
+      toast({ title: "Error", description: "Failed to load batch contents.", variant: "destructive" });
+    } finally {
+      setLoadingItems(false);
+    }
+  };
 
   const closeBatchFolder = () => {
     setOpenBatch(null);
@@ -181,17 +180,17 @@ const CodesManagement = () => {
   // ── Reload open batch after upload ───────────────────────────────────────
 
   const reloadOpenBatch = async (batch: CodeBatch) => {
-  setLoadingItems(true);
-  try {
-    const data = await fetchBatchItems(batch.id);
-    setBatchItems(data);
-    // No edit values needed
-  } catch {
-    toast({ title: "Error", description: "Failed to refresh batch.", variant: "destructive" });
-  } finally {
-    setLoadingItems(false);
-  }
-};
+    setLoadingItems(true);
+    try {
+      const data = await fetchBatchItems(batch.id);
+      setBatchItems(data);
+    } catch {
+      toast({ title: "Error", description: "Failed to refresh batch.", variant: "destructive" });
+    } finally {
+      setLoadingItems(false);
+    }
+  };
+
   // ── Create batch/folder ───────────────────────────────────────────────────
 
   const handleCreateFolder = async () => {
@@ -218,7 +217,6 @@ const CodesManagement = () => {
         e?.message ||
         "Something went wrong.";
       toast({ title: "Create Failed", description: msg, variant: "destructive" });
-      console.error("createBatch error →", e?.response ?? e);
     } finally {
       setCreatingFolder(false);
     }
@@ -252,12 +250,10 @@ const CodesManagement = () => {
         description: `${result.imported} receivers imported${errMsg}.`,
       });
 
-      // Reload open batch items FIRST (before fetchBatchList to avoid stale state)
       if (openBatch?.id === batchId) {
         await reloadOpenBatch(openBatch);
       }
 
-      // Then refresh batch list counts
       await fetchBatchList();
 
       setTimeout(() => setUploadProgress((p) => ({ ...p, [batchId]: "idle" })), 3000);
@@ -288,8 +284,6 @@ const CodesManagement = () => {
     return (
       <DashboardLayout>
         <div className="space-y-5">
-
-          {/* Hidden file input */}
           <input
             ref={fileInputRef}
             type="file"
@@ -298,7 +292,6 @@ const CodesManagement = () => {
             onChange={handleFileSelected}
           />
 
-          {/* Header — back button + batch info */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <Button
@@ -321,7 +314,6 @@ const CodesManagement = () => {
               </div>
             </div>
 
-            {/* Upload + Download for open batch */}
             <div className="flex gap-2">
               <Button
                 variant="outline"
@@ -368,7 +360,6 @@ const CodesManagement = () => {
             </div>
           </div>
 
-          {/* Tabs + Search */}
           <div className="flex flex-col md:flex-row gap-3 items-center justify-between bg-blue-950/40 p-1 rounded-xl border border-blue-900/50">
             <div className="flex w-full md:w-auto">
               <button
@@ -412,7 +403,6 @@ const CodesManagement = () => {
             </div>
           </div>
 
-          {/* Table */}
           <Card className="border-blue-900/50 bg-blue-950/50 backdrop-blur-sm">
             <CardHeader className="pb-2">
               <CardTitle className="text-white flex items-center gap-2 text-base">
@@ -444,19 +434,19 @@ const CodesManagement = () => {
                         {activeTab === "sold" && (
                           <>
                             <TableHead className="text-blue-200">Customer</TableHead>
-                            <TableHead className="text-blue-200">Assigned Date</TableHead>
                             <TableHead className="text-blue-200">Payment</TableHead>
                           </>
                         )}
                         <TableHead className="text-blue-200">Activation Code</TableHead>
                         <TableHead className="text-blue-200">Expiry</TableHead>
+                        <TableHead className="text-blue-200 text-center">QR Code</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredList.length === 0 ? (
                         <TableRow>
                           <TableCell
-                            colSpan={activeTab === "sold" ? 8 : 5}
+                            colSpan={activeTab === "sold" ? 6 : 4}
                             className="h-24 text-center text-muted-foreground"
                           >
                             No results for "{searchTerm}"
@@ -468,22 +458,15 @@ const CodesManagement = () => {
                             key={item.serial}
                             className="border-blue-900/50 hover:bg-blue-900/10 transition-colors"
                           >
-                            {/* Serial — READ ONLY */}
                             <TableCell>
                               <div className="font-bold text-white font-mono text-sm">{item.serial}</div>
                             </TableCell>
 
-                            {/* Sold-only columns */}
                             {activeTab === "sold" && (
                               <>
                                 <TableCell>
                                   <div className="text-sm font-medium text-white">{item.customer_name || "—"}</div>
                                   <div className="text-[11px] text-blue-400">{item.customer_email}</div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="text-sm text-blue-200">
-                                    {item.assigned_date || "—"}
-                                  </div>
                                 </TableCell>
                                 <TableCell>
                                   <span
@@ -499,7 +482,6 @@ const CodesManagement = () => {
                               </>
                             )}
 
-                            {/* Code — READ ONLY */}
                             <TableCell className="min-w-[180px]">
                               <div className="flex items-center gap-1.5">
                                 <FileSpreadsheet className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
@@ -511,11 +493,24 @@ const CodesManagement = () => {
                               </div>
                             </TableCell>
 
-                            {/* Expiry — READ ONLY */}
                             <TableCell>
                               <span className={item.code_expiry ? 'text-xs text-amber-300 font-mono' : 'text-xs text-blue-700 italic'}>
                                 {item.code_expiry || '—'}
                               </span>
+                            </TableCell>
+
+                            <TableCell className="text-center">
+                              {item.qr_code_image ? (
+                                <div className="flex justify-center">
+                                  <img
+                                    src={`data:image/png;base64,${item.qr_code_image}`}
+                                    alt="QR Code"
+                                    className="w-12 h-12 rounded bg-white p-1 object-contain transition-all duration-300 ease-in-out hover:scale-[4.5] hover:z-50 hover:relative hover:shadow-2xl hover:border hover:border-blue-500 cursor-zoom-in" 
+                                  />
+                                </div>
+                              ) : (
+                                <span className="text-xs text-blue-700 italic">No QR</span>
+                              )}
                             </TableCell>
                           </TableRow>
                         ))
@@ -538,8 +533,6 @@ const CodesManagement = () => {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-
-        {/* Hidden file input */}
         <input
           ref={fileInputRef}
           type="file"
@@ -548,7 +541,6 @@ const CodesManagement = () => {
           onChange={handleFileSelected}
         />
 
-        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 className="text-3xl font-bold tracking-tight text-white">Code Management</h2>
@@ -575,7 +567,6 @@ const CodesManagement = () => {
           </div>
         </div>
 
-        {/* CSV format hint */}
         <div className="rounded-lg bg-blue-900/20 border border-blue-800/40 px-4 py-3 text-xs text-blue-300 flex items-start gap-2">
           <FileSpreadsheet className="h-4 w-4 mt-0.5 text-blue-400 flex-shrink-0" />
           <div>
@@ -589,7 +580,6 @@ const CodesManagement = () => {
           </div>
         </div>
 
-        {/* Batch folders */}
         {loadingBatches ? (
           <div className="flex items-center justify-center py-20 text-blue-400 gap-3">
             <Loader2 className="h-7 w-7 animate-spin" />
@@ -616,7 +606,6 @@ const CodesManagement = () => {
                   className="group relative rounded-xl border border-blue-900/50 bg-blue-950/40 hover:bg-blue-900/30 hover:border-blue-700 transition-all cursor-pointer"
                   onClick={() => openBatchFolder(batch)}
                 >
-                  {/* Folder card body */}
                   <div className="p-5">
                     <div className="flex items-start gap-3">
                       <Folder className="h-10 w-10 text-yellow-400 flex-shrink-0 mt-0.5 group-hover:text-yellow-300 transition-colors" />
@@ -629,7 +618,6 @@ const CodesManagement = () => {
                       </div>
                     </div>
 
-                    {/* Stats row */}
                     <div className="mt-4 flex gap-3">
                       <div className="flex-1 rounded-lg bg-blue-900/40 px-3 py-2 text-center">
                         <p className="text-lg font-bold text-white">{batch.in_stock_count}</p>
@@ -642,10 +630,9 @@ const CodesManagement = () => {
                     </div>
                   </div>
 
-                  {/* Upload + Download buttons at bottom of card */}
                   <div
                     className="flex gap-2 px-4 pb-4"
-                    onClick={(e) => e.stopPropagation()} // prevent folder open on button click
+                    onClick={(e) => e.stopPropagation()} 
                   >
                     <Button
                       size="sm"
@@ -690,7 +677,6 @@ const CodesManagement = () => {
         )}
       </div>
 
-      {/* ── Create Folder Modal ────────────────────────────────────────── */}
       <Dialog open={showCreateFolder} onOpenChange={setShowCreateFolder}>
         <DialogContent className="bg-slate-900 border-blue-900/50 text-white max-w-md">
           <DialogHeader>

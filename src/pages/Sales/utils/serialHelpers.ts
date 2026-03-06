@@ -1,11 +1,10 @@
-// src/pages/Sales/utils/serialHelpers.ts
 import type { Tool, SerialNumbers } from "../types";
 
 export const isSerialNumbersObject = (serials: any): serials is SerialNumbers => {
   return serials && typeof serials === 'object' && !Array.isArray(serials);
 };
 
-// Update the return type to include externalRadioSerial
+// ✅ FIXED: Returns ALL 4 serials in serialSet
 export const extractAllSerialsFromTool = (
   tool: Tool,
   expectedEquipmentType?: string
@@ -21,37 +20,49 @@ export const extractAllSerialsFromTool = (
   if (Array.isArray(tool.serials)) {
     const allSerials = tool.serials as string[];
 
-    // A. Find Datalogger (Look for 'DL' or 'Data')
-    dataloggerSerial = allSerials.find(s => 
-      s.toUpperCase().includes('DL-') || 
-      s.toUpperCase().includes('DATALOGGER')
-    );
-
-    // B. Find External Radio (Look for 'ER', 'Radio', or specific radio models)
-    externalRadioSerial = allSerials.find(s => 
-      s.toUpperCase().includes('ER-') || 
-      s.toUpperCase().includes('RADIO') ||
-      s.toUpperCase().includes('EXTERNAL')
-    );
-
-    // C. Find Receivers (Everything that isn't a DL or Radio)
-    const receiverCandidates = allSerials.filter(s => s !== dataloggerSerial && s !== externalRadioSerial);
-
+    // ✅ NEW APPROACH: For Base & Rover Combo, keep ALL 4 serials together
     if (expectedEquipmentType === "Base & Rover Combo") {
-      // We expect 2 receivers
-      if (receiverCandidates.length >= 1) serialSet.push(receiverCandidates[0]);
-      if (receiverCandidates.length >= 2) serialSet.push(receiverCandidates[1]);
+      // Put ALL serials in serialSet (including DL and Radio)
+      serialSet.push(...allSerials);
       
-      // Fallback: If we didn't find specific DL/Radio tags, but we have enough items
-      if (!dataloggerSerial && allSerials.length >= 3) dataloggerSerial = allSerials[2];
-      if (!externalRadioSerial && allSerials.length >= 4) externalRadioSerial = allSerials[3];
+      // Also extract DL and Radio separately for identification purposes
+      dataloggerSerial = allSerials.find(s => 
+        s.toUpperCase().includes('DL-') || 
+        s.toUpperCase().includes('DATALOGGER')
+      );
+      
+      externalRadioSerial = allSerials.find(s => 
+        s.toUpperCase().includes('ER-') || 
+        s.toUpperCase().includes('RADIO') ||
+        s.toUpperCase().includes('EXTERNAL')
+      );
+      
+      // Fallback: If we didn't find by pattern, assume order
+      if (!dataloggerSerial && allSerials.length >= 3) {
+        dataloggerSerial = allSerials[2];
+      }
+      if (!externalRadioSerial && allSerials.length >= 4) {
+        externalRadioSerial = allSerials[3];
+      }
     } 
     else if (expectedEquipmentType === "Base Only" || expectedEquipmentType === "Rover Only") {
-      if (receiverCandidates.length >= 1) serialSet.push(receiverCandidates[0]);
+      // For single units, keep all serials (typically 2: receiver + DL)
+      serialSet.push(...allSerials);
+      
+      // Try to identify DL
+      dataloggerSerial = allSerials.find(s => 
+        s.toUpperCase().includes('DL-') || 
+        s.toUpperCase().includes('DATALOGGER')
+      );
+      
+      // Fallback if no DL pattern found
+      if (!dataloggerSerial && allSerials.length >= 2) {
+        dataloggerSerial = allSerials[1];
+      }
     }
     else {
-      // Default behavior
-      serialSet.push(...receiverCandidates);
+      // Default: Keep all serials
+      serialSet.push(...allSerials);
     }
   }
 
@@ -72,9 +83,15 @@ export const extractAllSerialsFromTool = (
     externalRadioSerial = getVal('external_radio', 'radio', 'externalRadio', 'er');
 
     if (expectedEquipmentType === "Base & Rover Combo") {
-      // Try specific keys first
+      // Add receivers
       if (serialObj.receiver1) serialSet.push(serialObj.receiver1);
       if (serialObj.receiver2) serialSet.push(serialObj.receiver2);
+      
+      // Add DL
+      if (dataloggerSerial) serialSet.push(dataloggerSerial);
+      
+      // Add Radio
+      if (externalRadioSerial) serialSet.push(externalRadioSerial);
 
       // If no numbered keys, try splitting the main 'receiver' key
       if (serialSet.length === 0 && serialObj.receiver) {
@@ -86,6 +103,7 @@ export const extractAllSerialsFromTool = (
       // Base Only, Rover Only, or Generic
       if (serialObj.receiver) serialSet.push(serialObj.receiver);
       if (serialObj.receiver1) serialSet.push(serialObj.receiver1);
+      if (dataloggerSerial) serialSet.push(dataloggerSerial);
     }
   }
 

@@ -18,6 +18,9 @@ interface AssignmentModalProps {
 const AssignmentModal = ({ assignment, onClose }: AssignmentModalProps) => {
   if (!assignment) return null;
 
+  // Determine the display label based on the actual assignment data
+  const equipmentTypeLabel = assignment.setType || "Equipment Unit";
+
   return (
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-w-md bg-slate-900 border-slate-700 text-white">
@@ -27,73 +30,42 @@ const AssignmentModal = ({ assignment, onClose }: AssignmentModalProps) => {
             Equipment Set Assigned Successfully!
           </DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-3">
-          <div className="bg-green-900/20 p-4 rounded-md border border-green-700">
-            <div className="text-center">
-              <div className="text-lg font-semibold text-green-300 mb-2">
-                {assignment.toolName}
-              </div>
-              <div className="text-sm text-gray-300 mb-3">
-                {assignment.setType} • {assignment.serialCount} serials
-              </div>
-              
-              {assignment.invoiceNumber && (
-                <div className="mb-3 p-2 bg-green-900/30 rounded border border-green-700">
-                  <div className="font-medium text-green-300">Sales Invoice:</div>
-                  <div className="text-white font-mono">{assignment.invoiceNumber}</div>
-                </div>
-              )}
-              
-              {assignment.importInvoice && (
-                <div className="mb-3 p-2 bg-blue-900/30 rounded border border-blue-700">
-                  <div className="font-medium text-blue-300">Import Invoice:</div>
-                  <div className="text-white font-mono">{assignment.importInvoice}</div>
-                </div>
-              )}
-              
-              <div className="space-y-2 text-sm mb-3">
-                <div className="font-medium text-blue-300">Receiver Serials:</div>
-                {assignment.serialSet.map((serial, index) => (
-                  <div key={index} className="flex justify-between">
-                    <span className="text-gray-300">
-                      {assignment.setType === "Base & Rover Combo" 
-                        ? `Receiver ${index + 1}:` 
-                        : 'Receiver:'}
-                    </span>
-                    <span className="text-white font-mono">{serial}</span>
-                  </div>
-                ))}
-              </div>
-              
-              {assignment.dataloggerSerial && (
-                <div className="space-y-2 text-sm border-t border-green-600 pt-3">
-                  <div className="font-medium text-blue-300">Datalogger Serial:</div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-300">Datalogger:</span>
-                    <span className="text-white font-mono">{assignment.dataloggerSerial}</span>
-                  </div>
-                </div>
-              )}
+  <div className="space-y-2">
+  <label className="text-sm font-medium text-slate-400">Main Serials</label>
+  <div className="flex flex-wrap gap-2">
+    {assignment.serialSet?.map((serial: string, index: number) => (
+      <span 
+        key={index} 
+        className="px-3 py-1 bg-blue-900/30 border border-blue-500/50 text-blue-200 rounded text-sm font-mono"
+      >
+        {serial}
+      </span>
+    ))}
+  </div>
+</div>
 
-              {assignment.externalRadioSerial && (
-                <div className="space-y-2 text-sm border-t border-green-600 pt-3 mt-3">
-                  <div className="font-medium text-blue-300">External Radio Serial:</div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-300">External Radio:</span>
-                    <span className="text-white font-mono">{assignment.externalRadioSerial}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-          <p className="text-gray-300 text-sm text-center">
-            Complete equipment set has been assigned from inventory.
-          </p>
-        </div>
+{/* Ensure Datalogger and Radio also use the correct keys */}
+{assignment.dataloggerSerial && (
+  <div className="mt-4">
+    <label className="text-sm font-medium text-green-400">Datalogger</label>
+    <div className="mt-1 px-3 py-1 bg-green-900/30 border border-green-500/50 text-green-200 rounded text-sm font-mono">
+      {assignment.dataloggerSerial}
+    </div>
+  </div>
+)}
+
+{assignment.externalRadioSerial && (
+  <div className="mt-4">
+    <label className="text-sm font-medium text-orange-400">External Radio</label>
+    <div className="mt-1 px-3 py-1 bg-orange-900/30 border border-orange-500/50 text-orange-200 rounded text-sm font-mono">
+      {assignment.externalRadioSerial}
+    </div>
+  </div>
+)}
         <DialogFooter>
           <Button
             onClick={onClose}
-            className="bg-green-600 hover:bg-green-700 text-white"
+            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-5"
           >
             Continue
           </Button>

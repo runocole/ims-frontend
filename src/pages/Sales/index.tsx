@@ -1,13 +1,13 @@
-// src/pages/Sales/index.tsx
 import { useEffect, useState } from "react";
 import { FileText } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { DashboardLayout } from "../../components/DashboardLayout";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { toast } from "react-hot-toast";
 
 // Types
-import type { Customer, AssignmentResult } from "./types";
+import type { Customer } from "./types";
 
 // Components
 import { CustomerSearch } from "./components/CustomerSearch";
@@ -45,7 +45,6 @@ export default function SalesPage() {
     soldSerials: []
   });
 
-  // Custom hooks
   const {
     sales,
     customers,
@@ -70,22 +69,32 @@ export default function SalesPage() {
     resetForm
   } = useSaleForm();
 
-  const {
-    assignmentResult,
-    assignRandomTool,
-    clearAssignment
-  } = useToolAssignment();
+  const { assignRandomTool } = useToolAssignment();
+  const [displayedAssignment, setDisplayedAssignment] = useState<any>(null);
 
-  // Fetch grouped tools when category changes
+  // FIXED: Fetch effect with proper dependency management and cleanup
   useEffect(() => {
-    if (currentItem.selectedCategory) {
-      fetchGroupedTools(
-        currentItem.selectedCategory,
-        currentItem.selectedEquipmentType
-      ).then(data => setGroupedTools(data));
-    } else {
-      setGroupedTools([]);
-    }
+    let isMounted = true;
+
+    const loadTools = async () => {
+      if (!currentItem.selectedCategory) {
+        setGroupedTools([]);
+        return;
+      }
+
+      try {
+        const data = await fetchGroupedTools(
+          currentItem.selectedCategory,
+          currentItem.selectedEquipmentType
+        );
+        if (isMounted) setGroupedTools(data || []);
+      } catch (error) {
+        console.error("Failed to load tools:", error);
+      }
+    };
+
+    loadTools();
+    return () => { isMounted = false; };
   }, [currentItem.selectedCategory, currentItem.selectedEquipmentType]);
 
   const handleCategorySelect = (category: string) => {
@@ -95,10 +104,7 @@ export default function SalesPage() {
       selectedTool: null,
       cost: ""
     });
-
-    if (category === "Receiver") {
-      setShowEquipmentTypeModal(true);
-    }
+    if (category === "Receiver") setShowEquipmentTypeModal(true);
   };
 
   const handleEquipmentTypeSelect = (equipmentType: string) => {
@@ -107,7 +113,10 @@ export default function SalesPage() {
   };
 
   const handleToolSelect = (toolName: string) => {
-    const selected = groupedTools.find(tool => tool.name === toolName);
+    const selected = Array.isArray(groupedTools) 
+      ? groupedTools.find(tool => tool.name === toolName) 
+      : null;
+    
     if (selected) {
       updateCurrentItem({
         selectedTool: selected,
@@ -117,158 +126,142 @@ export default function SalesPage() {
   };
 
   const handleAddItem = async () => {
-    if (!currentItem.selectedTool || !currentItem.cost) {
-      alert("Please select equipment and enter a Selling Price.");
-      return;
-    }
-
-    try {
-      const assignment = await assignRandomTool(currentItem);
-      
-      const newItem = {
-        tool_id: assignment.assigned_tool_id,
-        equipment: assignment.tool_name,
-        cost: currentItem.cost,
-        category: currentItem.selectedCategory,
-        serial_set: assignment.serial_set,
-        external_radio_serial: assignment.external_radio_serial,
-        datalogger_serial: assignment.datalogger_serial,
-        assigned_tool_id: assignment.assigned_tool_id,
-        invoice_number: assignment.invoice_number,
-        import_invoice: assignment.import_invoice
-      };
-
-      addItem(newItem);
-      
-      updateCurrentItem({
-        selectedCategory: "",
-        selectedEquipmentType: "",
-        selectedTool: null,
-        cost: ""
-      });
-      
-    } catch (error: any) {
-      alert(error.message);
-    }
-  };
-
-  const handleSaveSale = async (action: "draft" | "send") => {
-    if (!selectedCustomer) {
-      alert("Please select a customer first.");
-      return;
-    }
-
-    if (saleItems.length === 0) {
-      alert("Please add at least one item to the sale.");
+    if (!selectedCustomer || !currentItem.selectedTool || !currentItem.cost) {
+      toast.error("Please select customer, equipment and price");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const today = new Date();
-      const dateSold = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
-      const payload = {
-        name: selectedCustomer.name,
-        phone: selectedCustomer.phone,
-        state: selectedCustomer.state,
-        items: saleItems,
-        total_cost: totalCost.toString(),
-        payment_plan: saleDetails.payment_plan || "",
-        initial_deposit: saleDetails.payment_plan === "No" ? null : (saleDetails.initial_deposit || null),
-        payment_months: saleDetails.payment_plan === "No" ? null : (saleDetails.payment_months || null),
-        expiry_date: saleDetails.expiry_date || null,
-        invoice_number: saleItems[0]?.invoice_number || "",
-        import_invoice: saleItems[0]?.import_invoice || "",
-        date_sold: dateSold,
-      };
-
-      const res = await api.createSale(payload);
-      addSale(res.data);
-
-      if (action === "send" && selectedCustomer?.email) {
-        await api.sendSaleEmail(
-          selectedCustomer.email,
-          selectedCustomer.name,
-          saleItems,
-          totalCost,
-          res.data.invoice_number
-        );
-      }
-
-      resetForm();
-      setSelectedCustomer(null);
-      setOpen(false);
+      const qty = currentItem.quantity || 1;
       
-    } catch (error) {
-      console.error("Error saving sale:", error);
-      alert("Failed to save sale");
+      for (let i = 0; i < qty; i++) {
+        const assignment = await assignRandomTool(currentItem);
+
+        console.log("🔍 ASSIGNMENT RESULT:", assignment);
+        console.log("🔍 Serial Set:", assignment.serial_set);
+        console.log("🔍 Serial Count:", assignment.serial_set?.length);
+        
+        const newItem = {
+  id: window.crypto.randomUUID(), 
+  tool_id: assignment.assigned_tool_id,
+  equipment: assignment.tool_name,
+  equipment_type: currentItem.selectedEquipmentType || "",
+  cost: currentItem.cost, 
+  category: currentItem.selectedCategory,
+  serial_set: [...(assignment.serial_set || [])],  // ✅ COPY the array!
+  external_radio_serial: assignment.external_radio_serial,
+  datalogger_serial: assignment.datalogger_serial,  // ✅ ADD THIS TOO
+  assigned_tool_id: assignment.assigned_tool_id,
+  import_invoice: assignment.import_invoice
+};
+        
+        addItem(newItem);
+        console.log("🔍 ITEM ADDED:", newItem);
+        console.log("🔍 ITEM SERIAL SET:", newItem.serial_set);
+        setDisplayedAssignment(assignment); 
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Failed to assign equipment");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleUpdateStatus = async () => {
-    if (!editingSale || !newPaymentStatus) return;
-    
-    setIsUpdatingStatus(true);
-    try {
-      await api.updateSaleStatus(editingSale.id, newPaymentStatus);
-      updateSaleStatus(editingSale.id, newPaymentStatus);
-      setEditStatusOpen(false);
-    } catch (error) {
-      alert("Failed to update payment status");
-    } finally {
-      setIsUpdatingStatus(false);
-    }
-  };
+  const handleSaveSale = async (action: "draft" | "send") => {
 
-  const handleViewSerials = async (tool: any) => {
+  console.log("🔍 SALE ITEMS BEFORE SAVE:", saleItems);
+  console.log("🔍 FIRST ITEM SERIALS:", saleItems[0]?.serial_set);
+
+  if (!selectedCustomer || saleItems.length === 0) {
+    toast.error("Missing customer or items.");
+    return;
+  }
+
+  setIsSubmitting(true);
+  try {
+    // ✅ FIX: Map "send" action to valid payment_status
+    const paymentStatus = action === "send" ? "pending" : "pending";  // Both map to "pending" initially
+    
+    const payload = {
+      name: selectedCustomer.name,
+      phone: selectedCustomer.phone,
+      state: selectedCustomer.state,
+      items: saleItems,
+      total_cost: totalCost.toString(),
+      payment_plan: saleDetails.payment_plan,
+      initial_deposit: saleDetails.initial_deposit || null,
+      payment_months: saleDetails.payment_months || null,
+      expiry_date: saleDetails.expiry_date || null,
+      date_sold: new Date().toISOString().split('T')[0],
+      payment_status: paymentStatus,  // ✅ ADD THIS LINE
+    };
+
+    console.log("🔍 PAYLOAD BEING SENT:", JSON.stringify(payload, null, 2));
+    console.log("🔍 SALE ITEMS:", saleItems);
+
+    const res = await api.createSale(payload);
+    addSale(res.data);
+
+    resetForm();
+    setSelectedCustomer(null);
+    setOpen(false);
+    
+    // ✅ Different success messages
+    if (action === "send") {
+      toast.success("Sale completed and bill sent!");
+    } else {
+      toast.success("Sale saved as draft!");
+    }
+    
+  } catch (error) {
+    toast.error("Failed to save sale");
+    console.error("Save sale error:", error);  // ✅ ADD: See full error
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
+  const handleRemoveItem = async (index: number) => {
+    const itemToRemove = saleItems[index];
+    if (!itemToRemove.assigned_tool_id) {
+      removeItem(index);
+      return;
+    }
+
     try {
-      const response = await api.getSoldSerials(tool.id);
-      setViewingSerials({
-        open: true,
-        tool,
-        soldSerials: response.data
-      });
-    } catch (error) {
-      console.error("Error fetching sold serials:", error);
+      await api.restoreSerials(
+        itemToRemove.assigned_tool_id, 
+        itemToRemove.serial_set || [] 
+      );
+      removeItem(index);
+      toast.success("Item removed and stock restored.");
+    } catch (error: any) {
+      removeItem(index);
+      toast.error("UI updated, but server sync failed.");
     }
   };
 
   const exportPDF = () => {
     const doc = new jsPDF();
-    doc.text("My Sales Records", 14, 15);
+    doc.setFontSize(18);
+    doc.text("OTIC Geosystems - Sales Records", 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 20);
+
     autoTable(doc, {
       startY: 25,
-      head: [[
-        "Client", "Phone", "State", "Items", "Serial Numbers",
-        "Price", "Date Sold", "Sales Invoice", "Import Invoice",
-        "Payment Plan", "Initial Deposit", "Payment Months", "Expiry", "Status",
-      ]],
+      head: [["Client", "Items", "Price", "Date", "Status"]],
       body: sales.map((s) => [
-        s.name,
-        s.phone,
-        s.state,
-        s.items.map(item => item.equipment).join(', '),
-        s.items.map(item => 
-          item.serial_set ? 
-            `Receiver: ${item.serial_set.join(', ')}${item.datalogger_serial ? `, Datalogger: ${item.datalogger_serial}` : ''}` 
-            : 'No serials'
-        ).join('; '),
-        `₦${s.total_cost}`,
-        s.date_sold,
-        s.invoice_number || "-",
-        s.import_invoice || "-",
-        s.payment_plan || "-",
-        s.initial_deposit ? `₦${s.initial_deposit}` : "-", 
-        s.payment_months || "-",        
-        s.expiry_date || "-",
-        s.payment_status || "-",
+        s.name ?? "-",
+        s.items?.length ?? 0,
+        `₦${parseFloat(s.total_cost).toLocaleString()}`,
+        s.date_sold ?? "-",
+        (s.payment_status ?? "pending").toUpperCase(),
       ]),
-      styles: { fontSize: 7 },
+      headStyles: { fillColor: [30, 41, 59] },
     });
-    doc.save("my_sales_records.pdf");
+    doc.save(`sales_report_${new Date().getTime()}.pdf`);
   };
 
   return (
@@ -276,25 +269,15 @@ export default function SalesPage() {
       <div className="p-6 space-y-6">
         <CustomerSearch
           customers={customers}
-          onSelectCustomer={(customer) => {
-            setSelectedCustomer(customer);
-            setOpen(true);
-          }}
+          onSelectCustomer={(c) => { setSelectedCustomer(c); setOpen(true); }}
           onAddSaleClick={() => setOpen(true)}
           selectedCustomer={selectedCustomer}
-          onClearCustomer={() => {
-            setSelectedCustomer(null);
-            resetForm();
-          }}
+          onClearCustomer={() => { setSelectedCustomer(null); resetForm(); }}
         />
 
         <div className="flex justify-end gap-3">
-          <Button
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-            onClick={exportPDF}
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            Export PDF
+          <Button className="bg-slate-800 hover:bg-slate-700 text-white" onClick={exportPDF}>
+            <FileText className="w-4 h-4 mr-2" /> Export PDF
           </Button>
         </div>
 
@@ -303,16 +286,15 @@ export default function SalesPage() {
           onOpenChange={setShowEquipmentTypeModal}
           selectedType={currentItem.selectedEquipmentType}
           onSelect={handleEquipmentTypeSelect}
-          onCancel={() => {
-            setShowEquipmentTypeModal(false);
-            updateCurrentItem({ selectedCategory: "" });
-          }}
+          onCancel={() => { setShowEquipmentTypeModal(false); updateCurrentItem({ selectedCategory: "" }); }}
         />
 
-        <AssignmentModal
-          assignment={assignmentResult}
-          onClose={clearAssignment}
-        />
+        {displayedAssignment && (
+          <AssignmentModal 
+            assignment={displayedAssignment} 
+            onClose={() => setDisplayedAssignment(null)} 
+          />
+        )}
 
         <AddSaleDialog
           open={open}
@@ -320,7 +302,6 @@ export default function SalesPage() {
           selectedCustomer={selectedCustomer}
           currentItem={currentItem}
           groupedTools={groupedTools}
-          filteredGroupedTools={groupedTools}
           saleItems={saleItems}
           saleDetails={saleDetails}
           totalCost={totalCost}
@@ -329,43 +310,17 @@ export default function SalesPage() {
           onEquipmentTypeChange={handleEquipmentTypeSelect}
           onToolSelect={handleToolSelect}
           onCostChange={(cost) => updateCurrentItem({ cost })}
+          onQuantityChange={(quantity) => updateCurrentItem({ quantity })}
           onAddItem={handleAddItem}
-          onRemoveItem={removeItem}
-          onPaymentPlanChange={(value) => {
-            updateSaleDetails({
-              payment_plan: value,
-              initial_deposit: value === "No" ? "" : saleDetails.initial_deposit,
-              payment_months: value === "No" ? "" : saleDetails.payment_months
-            });
-          }}
-          onInitialDepositChange={(value) => updateSaleDetails({ initial_deposit: value })}
-          onPaymentMonthsChange={(value) => updateSaleDetails({ payment_months: value })}
-          onExpiryDateChange={(value) => updateSaleDetails({ expiry_date: value })}
+          onRemoveItem={handleRemoveItem}
+          filteredGroupedTools={groupedTools}
+          onPaymentPlanChange={(v) => updateSaleDetails({ payment_plan: v })}
+          onInitialDepositChange={(v) => updateSaleDetails({ initial_deposit: v })}
+          onPaymentMonthsChange={(v) => updateSaleDetails({ payment_months: v })}
+          onExpiryDateChange={(v) => updateSaleDetails({ expiry_date: v })}
           onSaveDraft={() => handleSaveSale("draft")}
           onSaveAndSend={() => handleSaveSale("send")}
-          onCancel={() => {
-            resetForm();
-            setSelectedCustomer(null);
-            setOpen(false);
-          }}
-        />
-
-        <EditStatusDialog
-          open={editStatusOpen}
-          onOpenChange={setEditStatusOpen}
-          sale={editingSale}
-          paymentStatus={newPaymentStatus}
-          onStatusChange={setNewPaymentStatus}
-          onUpdate={handleUpdateStatus}
-          isUpdating={isUpdatingStatus}
-        />
-
-        <ViewSerialsDialog
-          open={viewingSerials.open}
-          onOpenChange={(open) => setViewingSerials(prev => ({ ...prev, open }))}
-          tool={viewingSerials.tool}
-          soldSerials={viewingSerials.soldSerials}
-          onClose={() => setViewingSerials({ open: false, tool: null, soldSerials: [] })}
+          onCancel={() => { resetForm(); setSelectedCustomer(null); setOpen(false); }}
         />
 
         <SalesTable
@@ -377,7 +332,48 @@ export default function SalesPage() {
             setNewPaymentStatus(sale.payment_status || "pending");
             setEditStatusOpen(true);
           }}
-          onViewSerials={handleViewSerials}
+          onViewSerials={async (tool) => {
+            const toolId = tool.id || (tool as any).assigned_tool_id;
+            if (!toolId) return toast.error("Tool ID not found");
+            
+            try {
+              const res = await api.getSoldSerials(toolId);
+              setViewingSerials({ open: true, tool, soldSerials: res.data });
+            } catch {
+              toast.error("Could not fetch serial history");
+            }
+          }}
+        />
+
+        <EditStatusDialog
+          open={editStatusOpen}
+          onOpenChange={setEditStatusOpen}
+          sale={editingSale}
+          paymentStatus={newPaymentStatus}
+          onStatusChange={setNewPaymentStatus}
+          onUpdate={async () => {
+            if (!editingSale) return;
+            setIsUpdatingStatus(true);
+            try {
+              await api.updateSaleStatus(editingSale.id, newPaymentStatus);
+              updateSaleStatus(editingSale.id, newPaymentStatus);
+              setEditStatusOpen(false);
+              toast.success("Payment status updated");
+            } catch {
+              toast.error("Update failed");
+            } finally {
+              setIsUpdatingStatus(false);
+            }
+          }}
+          isUpdating={isUpdatingStatus}
+        />
+
+        <ViewSerialsDialog
+          open={viewingSerials.open}
+          onOpenChange={(open) => setViewingSerials(prev => ({ ...prev, open }))}
+          tool={viewingSerials.tool}
+          soldSerials={viewingSerials.soldSerials}
+          onClose={() => setViewingSerials({ open: false, tool: null, soldSerials: [] })}
         />
       </div>
     </DashboardLayout>

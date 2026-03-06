@@ -279,11 +279,11 @@ const Tools: React.FC = () => {
           return {
             ...t,
             stock: typeof t.stock === "number" ? t.stock : Number(t.stock || 0),
-            category: t.category || "",
+            category: t.category === "Accessory" ? "Accessories" : (t.category || ""),
             serials: serialsArr,
             available_serials: availableSerials, // NEW
             sold_serials: soldSerials, // NEW
-            equipment_type: t.equipment_type ?? t.equipment_type_name ?? "",
+            equipment_type: t.equipment_type_name || (typeof t.equipment_type === 'string' ? t.equipment_type : t.name),
             equipment_type_id: t.equipment_type_id ?? "",
             expiry_date: t.expiry_date || "",
           };
@@ -561,98 +561,109 @@ const handleEquipmentTypeSelect = (val: string) => {
 };
   /* ---------------- Save / Update ---------------- */
 const handleSaveTool = async () => {
-  if (!String(form.name || "").trim() || !String(form.code || "").trim() || !String(form.cost || "").trim()) {
-    alert("Please fill in required fields: Name, Serial (Code), Cost.");
-    return;
-  }
-
-  const parsedStock = Math.max(0, Number(form.stock) || 0);
-  const finalCategory = selectedCategoryCard || form.category || "";
-  let finalEquipmentTypeName = "";
-  let finalEquipmentTypeId: any = form.equipment_type_id || "";
-
-  if (selectedEquipmentType) {
-    const found = equipmentTypes.find((e) => String(e.id) === String(selectedEquipmentType));
-    if (found) {
-      finalEquipmentTypeName = found.name;
-      finalEquipmentTypeId = found.id;
-    } else {
-      finalEquipmentTypeName = selectedEquipmentType;
-      finalEquipmentTypeId = selectedEquipmentType;
+    // 1. Validation
+    if (!String(form.name || "").trim() || !String(form.code || "").trim() || !String(form.cost || "").trim()) {
+      alert("Please fill in required fields: Name, Serial (Code), Cost.");
+      return;
     }
-  } else if (form.equipment_type) {
-    finalEquipmentTypeName = form.equipment_type;
-    finalEquipmentTypeId = form.equipment_type_id || "";
-  }
 
-  const payload: any = {
-    name: String(form.name).trim(),
-    code: String(form.code).trim(),
-    cost: String(form.cost).trim(),
-    stock: parsedStock,
-    description: form.description || "",
-    supplier: form.supplier || "",
-    category: finalCategory,
-    invoice_number: selectedInvoice || form.invoice_number || "",
-    expiry_date: form.expiry_date || "",
-    date_added: new Date().toISOString(),
-  };
+    // 2. Normalize Category
+    let finalCategory = selectedCategoryCard || form.category || "";
+    if (finalCategory === "Accessories") finalCategory = "Accessory";
+    if (finalCategory === "Receivers") finalCategory = "Receiver";
 
-  const extrasArr = (Array.isArray(form.serials) ? form.serials : [])
-    .map((s: any) => String(s || "").trim())
-    .filter((s: string) => s !== "");
+    // 3. Safely distinguish between DB ID (Receiver) and String (Accessory)
+    let finalName = String(form.name).trim();
+    let finalEquipmentTypeId: number | null = null; 
 
-  // Handle serials and available_serials
-  if (finalCategory === "Receiver") {
-    payload.serials = [String(form.code).trim(), ...extrasArr];
-    // Initialize available_serials with all serials if not editing
-    if (!isEditMode) {
-      payload.available_serials = [String(form.code).trim(), ...extrasArr];
+    if (selectedEquipmentType) {
+      const foundType = equipmentTypes.find((e) => String(e.id) === String(selectedEquipmentType));
+      if (foundType) {
+        finalName = foundType.name; // It's a Receiver (e.g. "Mars")
+        finalEquipmentTypeId = Number(foundType.id);
+      } else {
+        finalName = selectedEquipmentType; // It's an Accessory (e.g. "Data Logger")
+        finalEquipmentTypeId = null; // Null prevents the 400 Bad Request crash!
+      }
+    } else if (form.equipment_type) {
+      finalName = form.equipment_type;
     }
-  } else {
-    const allSerials = [String(form.code).trim(), ...extrasArr].filter(Boolean);
-    if (allSerials.length > 0) {
-      payload.serials = allSerials;
-      // Initialize available_serials with all serials if not editing
-      if (!isEditMode) {
-        payload.available_serials = allSerials;
+
+    // 4. Build Payload (including the Supplier that was missing!)
+    const payload: any = {
+      name: finalName,
+      code: String(form.code).trim(),
+      cost: parseFloat(String(form.cost)).toFixed(2),
+      stock: Math.max(0, Number(form.stock) || 0),
+      description: form.description || "",
+      category: finalCategory,
+      invoice_number: selectedInvoice || form.invoice_number || "",
+      expiry_date: form.expiry_date || null,
+      supplier: form.supplier || null, 
+    };
+
+    if (finalEquipmentTypeId !== null) {
+      payload.equipment_type = finalEquipmentTypeId;
+      payload.equipment_type_id = finalEquipmentTypeId;
+    }
+
+    // 5. Handle Serials Array
+    const allSerials = [
+      String(form.code).trim(),
+      ...(Array.isArray(form.serials) ? form.serials : [])
+    ].filter(Boolean);
+    
+    payload.serials = allSerials;
+    payload.available_serials = allSerials;
+
+    if (isEditMode) {
+      const existingTool = tools.find(t => t.id === editingToolId);
+      if (existingTool) {
+        payload.available_serials = form.available_serials || existingTool.available_serials || [];
+        payload.sold_serials = existingTool.sold_serials || [];
       }
     }
-  }
 
-  // For edit mode, preserve existing available_serials and sold_serials
-  if (isEditMode) {
-    const existingTool = tools.find(t => t.id === editingToolId);
-    if (existingTool) {
-      payload.available_serials = form.available_serials || existingTool.available_serials || [];
-      payload.sold_serials = existingTool.sold_serials || [];
-    }
-  }
-
-  if (finalEquipmentTypeId) {
-    payload.equipment_type_id = finalEquipmentTypeId;
-  }
-
-  if (isEditMode && editingToolId) {
     try {
-      const updated = await updateTool(editingToolId, payload);
-      const normalized: Tool = {
-        ...updated,
-        stock: typeof updated.stock === "number" ? updated.stock : Number(updated.stock || parsedStock),
-        serials: Array.isArray(updated.serials) ? updated.serials : payload.serials || [],
-        available_serials: updated.available_serials || payload.available_serials || [],
-        sold_serials: updated.sold_serials || [],
-        equipment_type: updated.equipment_type ?? finalEquipmentTypeName ?? "",
-        equipment_type_id: updated.equipment_type_id ?? payload.equipment_type_id ?? "",
-        expiry_date: updated.expiry_date || form.expiry_date || "",
-      };
-      setTools((prev) => prev.map((t) => (t.id === editingToolId ? normalized : t)));
+      let result: any; 
       
-      // Show success feedback
-      setToastMessage("Tool updated successfully!");
-      setShowToast(true);
-      setRecentlyAddedId(editingToolId);
-      
+      if (isEditMode && editingToolId) {
+        result = await updateTool(editingToolId, payload);
+        // Force the UI to show the text name, not the ID
+        const updatedItem = {
+          ...result,
+          name: finalName,
+          equipment_type: finalName,
+          equipment_type_name: finalName,
+          category: finalCategory === "Accessory" ? "Accessories" : finalCategory
+        };
+        setTools((prev) => prev.map((t) => (t.id === editingToolId ? updatedItem : t)));
+      } else {
+        const existing = tools.find((t) => t.code?.toLowerCase() === payload.code.toLowerCase());
+        if (existing) {
+          const newStock = (existing.stock || 0) + payload.stock;
+          result = await updateTool(existing.id, { ...payload, stock: newStock });
+          const updatedItem = {
+            ...result,
+            name: finalName,
+            equipment_type: finalName,
+            equipment_type_name: finalName,
+            category: finalCategory === "Accessory" ? "Accessories" : finalCategory
+          };
+          setTools((prev) => prev.map((t) => (t.id === existing.id ? updatedItem : t)));
+        } else {
+          result = await createTool(payload);
+          const newItem = {
+            ...result,
+            name: finalName,
+            equipment_type: finalName,
+            equipment_type_name: finalName,
+            category: finalCategory === "Accessory" ? "Accessories" : finalCategory
+          };
+          setTools((prev) => [newItem, ...prev]);
+        }
+      }
+
       setOpen(false);
       resetForm();
       setIsEditMode(false);
@@ -660,66 +671,17 @@ const handleSaveTool = async () => {
       setSelectedInvoice(null);
       setSelectedCategoryCard(null);
       setSelectedEquipmentType(null);
-    } catch (err) {
-      console.error("Error updating tool:", err);
-      alert("Failed to update tool.");
-    }
-    return;
-  }
+      setModalStep("select-invoice");
+      
+      setToastMessage(`Successfully saved ${finalName}`);
+      setShowToast(true);
 
-  try {
-    const existing = tools.find((t) => t.code && t.code.toLowerCase() === payload.code.toLowerCase());
-    if (existing) {
-      const newStock = (existing.stock || 0) + parsedStock;
-      const updatePayload: any = { stock: newStock };
-      if (payload.serials) updatePayload.serials = payload.serials;
-      if (payload.expiry_date) updatePayload.expiry_date = payload.expiry_date;
-      if (payload.available_serials) updatePayload.available_serials = payload.available_serials;
-      
-      const updated = await updateTool(existing.id, updatePayload);
-      const normalized = {
-        ...updated,
-        stock: typeof updated.stock === "number" ? updated.stock : Number(updated.stock || newStock),
-        serials: Array.isArray(updated.serials) ? updated.serials : updatePayload.serials || [],
-        available_serials: updated.available_serials || updatePayload.available_serials || [],
-        sold_serials: updated.sold_serials || [],
-        expiry_date: updated.expiry_date || payload.expiry_date || "",
-      };
-      setTools((prev) => prev.map((t) => (t.id === existing.id ? normalized : t)));
-      
-      // Show success feedback
-      setToastMessage(`Tool "${existing.code}" quantity increased by ${parsedStock}!`);
-      setShowToast(true);
-      setRecentlyAddedId(existing.id);
-    } else {
-      const created = await createTool(payload);
-      const normalizedCreated: Tool = {
-        ...created,
-        stock: typeof created.stock === "number" ? created.stock : Number(created.stock || parsedStock),
-        serials: Array.isArray(created.serials) ? created.serials : payload.serials || [],
-        available_serials: created.available_serials || payload.available_serials || [],
-        sold_serials: created.sold_serials || [],
-        equipment_type: created.equipment_type ?? finalEquipmentTypeName ?? "",
-        equipment_type_id: created.equipment_type_id ?? payload.equipment_type_id ?? "",
-        expiry_date: created.expiry_date || payload.expiry_date || "",
-      };
-      setTools((prev) => [normalizedCreated, ...prev]);
-      
-      // Show success feedback
-      setToastMessage("New tool added successfully!");
-      setShowToast(true);
-      setRecentlyAddedId(created.id);
+    } catch (error: any) { 
+      const serverErrors = error.response?.data;
+      console.error("❌ Django Rejected:", serverErrors);
+      alert("Server Error: " + JSON.stringify(serverErrors || error.message));
     }
-    setOpen(false);
-    resetForm();
-    setSelectedInvoice(null);
-    setSelectedCategoryCard(null);
-    setSelectedEquipmentType(null);
-  } catch (error) {
-    console.error("Error saving tool:", error);
-    alert("Failed to save tool.");
-  }
-};
+  };
 
   /* ---------------- Delete ---------------- */
   const handleDeleteTool = async (id: string) => {

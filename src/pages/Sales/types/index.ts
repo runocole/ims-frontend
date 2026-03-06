@@ -10,11 +10,13 @@ export interface SerialNumbers {
 }
 
 export interface SaleItem {
+  id?: string;
   tool_id: string;
   equipment: string;
+  equipment_type?: string;
   cost: string;
   category?: string;
-  serial_set?: string[];
+  serial_set: string[];
   external_radio_serial?: string;
   datalogger_serial?: string;
   assigned_tool_id?: string;
@@ -108,6 +110,7 @@ export interface CurrentItem {
   selectedEquipmentType: string;
   selectedTool: GroupedTool | null;
   cost: string;
+  quantity: number;
 }
 
 export interface SaleDetails {

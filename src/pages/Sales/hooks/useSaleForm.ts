@@ -1,15 +1,19 @@
 // src/pages/Sales/hooks/useSaleForm.ts
 import { useState } from 'react';
-import type { CurrentItem, SaleItem, SaleDetails, GroupedTool } from '../types';
+import type { CurrentItem, SaleItem, SaleDetails } from '../types';
 
 const useSaleForm = () => {
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
+  
+  // FIX: Added 'quantity: 1' to the initial state
   const [currentItem, setCurrentItem] = useState<CurrentItem>({
     selectedCategory: "",
     selectedEquipmentType: "",
     selectedTool: null,
-    cost: ""
+    cost: "",
+    quantity: 1 // Must be present to match the Type
   });
+
   const [saleDetails, setSaleDetails] = useState<SaleDetails>({
     payment_plan: "",
     initial_deposit: "",
@@ -37,11 +41,13 @@ const useSaleForm = () => {
 
   const resetForm = () => {
     setSaleItems([]);
+    // FIX: Added 'quantity: 1' to the reset state
     setCurrentItem({
       selectedCategory: "",
       selectedEquipmentType: "",
       selectedTool: null,
-      cost: ""
+      cost: "",
+      quantity: 1 
     });
     setSaleDetails({
       payment_plan: "",
