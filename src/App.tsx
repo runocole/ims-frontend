@@ -4,15 +4,16 @@ import { Toaster as Sonner } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import CustomerDashboard from "./pages/CustomerDashboard"; // Add this line
-import Dashboard from "./pages/StaffDashboard"; // Staff dashboard
+import CustomerDashboard from "./pages/CustomerDashboard";
+import Dashboard from "./pages/StaffDashboard";
 import Tools from "./pages/Tools";
 import Payments from "./pages/Payments";
-import CustomerPayments from "./pages/CustomerPayments"; // Add this line
+import CustomerPayments from "./pages/CustomerPayments";
 import StaffPage from "./pages/StaffPage";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
 import SalesPage from "./pages/Sales";
+import InvoicePage from "./pages/InvoicePage"; // ✅ ADDED THIS IMPORT
 import AdminDashboard from "./pages/DashboardPage";
 import CustomersPage from "./pages/CustomersPage";
 import ToolsSummary from "./pages/ToolsSummary";
@@ -57,9 +58,7 @@ const PrivateRoute: React.FC<PrivateRouteProps> = ({
     return <Navigate to="/login" replace />;
   }
 
-  // ✅ Role-based restriction
   if (allowedRoles && !allowedRoles.includes(role)) {
-    // Redirect user to their home dashboard
     if (role === "admin") return <Navigate to="/dashboard" replace />;
     if (role === "staff") return <Navigate to="/staff/dashboard" replace />;
     if (role === "customer") return <Navigate to="/customer/dashboard" replace />;
@@ -72,7 +71,7 @@ const PrivateRoute: React.FC<PrivateRouteProps> = ({
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <CurrencyProvider>
-      <CartProvider> {/* Wrap with CartProvider */}
+      <CartProvider>
         <TooltipProvider>
           <Toaster />
           <Sonner />
@@ -82,137 +81,84 @@ const App = () => (
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<Login />} />
 
-              {/* --- Staff Routes --- */}
+              {/* --- Staff / Shared Routes --- */}
               <Route
                 path="/staff/dashboard"
-                element={
-                  <PrivateRoute
-                    element={<Dashboard />}
-                    allowedRoles={["staff", "admin"]}
-                  />
-                }
+                element={<PrivateRoute element={<Dashboard />} allowedRoles={["staff", "admin"]} />}
               />
               <Route
                 path="/tools"
-                element={
-                  <PrivateRoute
-                    element={<Tools />}
-                    allowedRoles={["staff", "admin"]}
-                  />
-                }
+                element={<PrivateRoute element={<Tools />} allowedRoles={["staff", "admin"]} />}
               />
               <Route
                 path="/payments"
-                element={
-                  <PrivateRoute
-                    element={<Payments />}
-                    allowedRoles={["staff", "admin"]}
-                  />
-                }
+                element={<PrivateRoute element={<Payments />} allowedRoles={["staff", "admin"]} />}
               />
+              
+              {/* ✅ ADDED INVOICE ROUTE HERE */}
               <Route
-                path="/tools-summary"
+                path="/invoice/:invoiceId"
                 element={
-                  <PrivateRoute
-                    element={<ToolsSummary />}
-                    allowedRoles={["staff", "admin"]}
+                  <PrivateRoute 
+                    element={<InvoicePage />} 
+                    allowedRoles={["staff", "admin"]} 
                   />
                 }
               />
-              <Route
-                path="/staff"
-                element={
-                  <PrivateRoute
-                    element={<StaffPage />}
-                    allowedRoles={["staff", "admin"]}
-                  />
-                }
-              />
-              <Route
-                path="/customers"
-                element={
-                  <PrivateRoute
-                    element={<CustomersPage />}
-                    allowedRoles={["staff", "admin"]}
-                  />
-                }
-              />
+
               <Route
                 path="/sales"
-                element={
-                  <PrivateRoute
-                    element={<SalesPage />}
-                    allowedRoles={["staff", "admin"]}
-                  />
-                }
+                element={<PrivateRoute element={<SalesPage />} allowedRoles={["staff", "admin"]} />}
               />
+              
+              <Route
+                path="/customers"
+                element={<PrivateRoute element={<CustomersPage />} allowedRoles={["staff", "admin"]} />}
+              />
+              
+              <Route
+                path="/tools-summary"
+                element={<PrivateRoute element={<ToolsSummary />} allowedRoles={["staff", "admin"]} />}
+              />
+              
+              <Route
+                path="/staff"
+                element={<PrivateRoute element={<StaffPage />} allowedRoles={["staff", "admin"]} />}
+              />
+              
               <Route
                 path="/settings"
-                element={
-                  <PrivateRoute
-                    element={<Settings />}
-                    allowedRoles={["staff", "admin"]}
-                  />
-                }
+                element={<PrivateRoute element={<Settings />} allowedRoles={["staff", "admin"]} />}
               />
+              
               <Route
                 path="/customer/owing"
-                element={
-                  <PrivateRoute
-                    element={<CustomerOwing />}
-                    allowedRoles={["staff", "admin"]}
-                  />
-                }
+                element={<PrivateRoute element={<CustomerOwing />} allowedRoles={["staff", "admin"]} />}
               />
 
               <Route
                 path="/codes-management"
-                element={
-                  <PrivateRoute
-                    element={<CodesManagement />}
-                    allowedRoles={["staff", "admin"]}
-                  />
-                }
+                element={<PrivateRoute element={<CodesManagement />} allowedRoles={["staff", "admin"]} />}
               />
 
-              {/* --- Admin Routes --- */}
+              {/* --- Admin Only Routes --- */}
               <Route
                 path="/dashboard"
-                element={
-                  <PrivateRoute
-                    element={<AdminDashboard />}
-                    allowedRoles={["admin"]}
-                  />
-                }
+                element={<PrivateRoute element={<AdminDashboard />} allowedRoles={["admin"]} />}
               />
               <Route
                 path="/admin/sales"
-                element={ 
-                  <PrivateRoute
-                    element={<AdminSalesPage />}
-                    allowedRoles={["admin"]}
-                  />
-                }
+                element={<PrivateRoute element={<AdminSalesPage />} allowedRoles={["admin"]} />}
               />
 
               {/* --- Customer Routes --- */}
               <Route
                 path="/customer/dashboard"
-                element={
-                  <PrivateRoute
-                    element={<CustomerDashboard />}
-                    allowedRoles={["customer",]} // Allow both 'customer' and 'CustomerDashboard' roles
-                  />
-                }
+                element={<PrivateRoute element={<CustomerDashboard />} allowedRoles={["customer"]} />}
               />
               <Route 
                 path="/customer/payments" 
-                element={
-                  <PrivateRoute 
-                    element={<CustomerPayments />} 
-                    allowedRoles={["customer"]} 
-                  />
-                } 
+                element={<PrivateRoute element={<CustomerPayments />} allowedRoles={["customer"]} />} 
               />
               
               {/* --- Public Website Routes --- */}
@@ -227,7 +173,6 @@ const App = () => (
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route path="/product/:id" element={<ProductDetailPage />} />
-              {/* --- Public Course Route --- */}
               <Route path="/course/:courseId" element={<CourseDetail />} />
               
               {/* --- Staff Sales Route --- */}
@@ -236,11 +181,10 @@ const App = () => (
               {/* --- Fallback redirect --- */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
-            {/* Mobile Navigation - Shows on mobile only */}
             <MobileNavigation />
           </BrowserRouter>
         </TooltipProvider>
-      </CartProvider> {/* Close CartProvider */}
+      </CartProvider>
     </CurrencyProvider>
   </QueryClientProvider>
 );

@@ -7,6 +7,7 @@ import {
   ShoppingCart,
   FileText,
   Key,
+  ReceiptText,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import {
@@ -48,6 +49,7 @@ export function AppSidebar({ isOpen: externalIsOpen }: AppSidebarProps) {
       { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
       { title: "Code Management", url: "/codes-management", icon: Key },
       { title: "Payments", url: "/payments", icon: DollarSign },
+      { title: "Invoices", url: "/invoice/latest", icon: ReceiptText },
       { title: "Staff", url: "/staff", icon: Users },
       { title: "Inventory Summary", url: "/tools-summary", icon: FileText },
       { title: "Sales", url: "/admin/sales", icon: ShoppingCart },
@@ -57,6 +59,7 @@ export function AppSidebar({ isOpen: externalIsOpen }: AppSidebarProps) {
       { title: "Dashboard", url: "/staff/dashboard", icon: LayoutDashboard },
       { title: "Code Management", url: "/codes-management", icon: Key },
       { title: "Items", url: "/tools", icon: Package },
+      { title: "Invoices", url: "/invoice/latest", icon: ReceiptText },
       { title: "Payments", url: "/payments", icon: DollarSign },
       { title: "Inventory Summary", url: "/tools-summary", icon: FileText }, 
       { title: "Customers", url: "/customers", icon: Users },

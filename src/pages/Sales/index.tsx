@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { FileText } from "lucide-react";
 import { Button } from "../../components/ui/button";
+// Updated path to match your structure
 import { DashboardLayout } from "../../components/DashboardLayout";
+import { useNavigate } from "react-router-dom"; 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { toast } from "react-hot-toast";
@@ -27,6 +29,7 @@ import { useToolAssignment } from "./hooks/useToolAssignment";
 import { api } from "./utils/api";
 
 export default function SalesPage() {
+  const navigate = useNavigate();
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -72,16 +75,13 @@ export default function SalesPage() {
   const { assignRandomTool } = useToolAssignment();
   const [displayedAssignment, setDisplayedAssignment] = useState<any>(null);
 
-  // FIXED: Fetch effect with proper dependency management and cleanup
   useEffect(() => {
     let isMounted = true;
-
     const loadTools = async () => {
       if (!currentItem.selectedCategory) {
         setGroupedTools([]);
         return;
       }
-
       try {
         const data = await fetchGroupedTools(
           currentItem.selectedCategory,
@@ -92,7 +92,6 @@ export default function SalesPage() {
         console.error("Failed to load tools:", error);
       }
     };
-
     loadTools();
     return () => { isMounted = false; };
   }, [currentItem.selectedCategory, currentItem.selectedEquipmentType]);
@@ -130,35 +129,25 @@ export default function SalesPage() {
       toast.error("Please select customer, equipment and price");
       return;
     }
-
     setIsSubmitting(true);
     try {
       const qty = currentItem.quantity || 1;
-      
       for (let i = 0; i < qty; i++) {
         const assignment = await assignRandomTool(currentItem);
-
-        console.log("🔍 ASSIGNMENT RESULT:", assignment);
-        console.log("🔍 Serial Set:", assignment.serial_set);
-        console.log("🔍 Serial Count:", assignment.serial_set?.length);
-        
         const newItem = {
-  id: window.crypto.randomUUID(), 
-  tool_id: assignment.assigned_tool_id,
-  equipment: assignment.tool_name,
-  equipment_type: currentItem.selectedEquipmentType || "",
-  cost: currentItem.cost, 
-  category: currentItem.selectedCategory,
-  serial_set: [...(assignment.serial_set || [])],  // ✅ COPY the array!
-  external_radio_serial: assignment.external_radio_serial,
-  datalogger_serial: assignment.datalogger_serial,  // ✅ ADD THIS TOO
-  assigned_tool_id: assignment.assigned_tool_id,
-  import_invoice: assignment.import_invoice
-};
-        
+          id: window.crypto.randomUUID(), 
+          tool_id: assignment.assigned_tool_id,
+          equipment: assignment.tool_name,
+          equipment_type: currentItem.selectedEquipmentType || "",
+          cost: currentItem.cost, 
+          category: currentItem.selectedCategory,
+          serial_set: [...(assignment.serial_set || [])],
+          external_radio_serial: assignment.external_radio_serial,
+          datalogger_serial: assignment.datalogger_serial,
+          assigned_tool_id: assignment.assigned_tool_id,
+          import_invoice: assignment.import_invoice
+        };
         addItem(newItem);
-        console.log("🔍 ITEM ADDED:", newItem);
-        console.log("🔍 ITEM SERIAL SET:", newItem.serial_set);
         setDisplayedAssignment(assignment); 
       }
     } catch (error: any) {
@@ -169,58 +158,67 @@ export default function SalesPage() {
   };
 
   const handleSaveSale = async (action: "draft" | "send") => {
-
-  console.log("🔍 SALE ITEMS BEFORE SAVE:", saleItems);
-  console.log("🔍 FIRST ITEM SERIALS:", saleItems[0]?.serial_set);
-
-  if (!selectedCustomer || saleItems.length === 0) {
-    toast.error("Missing customer or items.");
-    return;
-  }
-
-  setIsSubmitting(true);
-  try {
-    // ✅ FIX: Map "send" action to valid payment_status
-    const paymentStatus = action === "send" ? "pending" : "pending";  // Both map to "pending" initially
-    
-    const payload = {
-      name: selectedCustomer.name,
-      phone: selectedCustomer.phone,
-      state: selectedCustomer.state,
-      items: saleItems,
-      total_cost: totalCost.toString(),
-      payment_plan: saleDetails.payment_plan,
-      initial_deposit: saleDetails.initial_deposit || null,
-      payment_months: saleDetails.payment_months || null,
-      expiry_date: saleDetails.expiry_date || null,
-      date_sold: new Date().toISOString().split('T')[0],
-      payment_status: paymentStatus,  // ✅ ADD THIS LINE
-    };
-
-    console.log("🔍 PAYLOAD BEING SENT:", JSON.stringify(payload, null, 2));
-    console.log("🔍 SALE ITEMS:", saleItems);
-
-    const res = await api.createSale(payload);
-    addSale(res.data);
-
-    resetForm();
-    setSelectedCustomer(null);
-    setOpen(false);
-    
-    // ✅ Different success messages
-    if (action === "send") {
-      toast.success("Sale completed and bill sent!");
-    } else {
-      toast.success("Sale saved as draft!");
+    if (!selectedCustomer || saleItems.length === 0) {
+      toast.error("Missing customer or items.");
+      return;
     }
-    
-  } catch (error) {
-    toast.error("Failed to save sale");
-    console.error("Save sale error:", error);  // ✅ ADD: See full error
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+
+    setIsSubmitting(true);
+    try {
+      const payload = {
+        name: selectedCustomer.name,
+        phone: selectedCustomer.phone,
+        state: selectedCustomer.state,
+        items: saleItems,
+        total_cost: totalCost.toString(),
+        payment_plan: saleDetails.payment_plan,
+        initial_deposit: saleDetails.initial_deposit || null,
+        payment_months: saleDetails.payment_months || null,
+        expiry_date: saleDetails.expiry_date || null,
+        date_sold: new Date().toISOString().split('T')[0],
+        payment_status: "pending",
+      };
+
+      const res = await api.createSale(payload);
+      addSale(res.data);
+
+      if (action === "send") {
+        // Prepare data with string-safe ID for the invoice page
+        const invoiceData = {
+          invoiceNo: res.data.invoice_no || `INV-${String(res.data.id).slice(0, 5)}`,
+          date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          customer: {
+            name: selectedCustomer.name,
+            address: `${selectedCustomer.state}, Nigeria`,
+          },
+          items: saleItems.map(item => ({
+            description: item.equipment,
+            qty: 1,
+            rate: parseFloat(item.cost),
+            discount: 0
+          })),
+          paymentMade: parseFloat(saleDetails.initial_deposit || "0")
+        };
+
+        localStorage.setItem("last_generated_invoice", JSON.stringify(invoiceData));
+        toast.success("Sale Recorded! Redirecting to Invoice...");
+        
+        setTimeout(() => {
+          navigate(`/invoice/${res.data.id}`);
+        }, 1500);
+      } else {
+        toast.success("Sale saved as draft!");
+      }
+
+      resetForm();
+      setSelectedCustomer(null);
+      setOpen(false);
+    } catch (error) {
+      toast.error("Failed to save sale");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleRemoveItem = async (index: number) => {
     const itemToRemove = saleItems[index];
@@ -228,15 +226,11 @@ export default function SalesPage() {
       removeItem(index);
       return;
     }
-
     try {
-      await api.restoreSerials(
-        itemToRemove.assigned_tool_id, 
-        itemToRemove.serial_set || [] 
-      );
+      await api.restoreSerials(itemToRemove.assigned_tool_id, itemToRemove.serial_set || []);
       removeItem(index);
       toast.success("Item removed and stock restored.");
-    } catch (error: any) {
+    } catch {
       removeItem(index);
       toast.error("UI updated, but server sync failed.");
     }
@@ -244,11 +238,6 @@ export default function SalesPage() {
 
   const exportPDF = () => {
     const doc = new jsPDF();
-    doc.setFontSize(18);
-    doc.text("OTIC Geosystems - Sales Records", 14, 15);
-    doc.setFontSize(10);
-    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 20);
-
     autoTable(doc, {
       startY: 25,
       head: [["Client", "Items", "Price", "Date", "Status"]],
@@ -261,7 +250,7 @@ export default function SalesPage() {
       ]),
       headStyles: { fillColor: [30, 41, 59] },
     });
-    doc.save(`sales_report_${new Date().getTime()}.pdf`);
+    doc.save(`sales_report.pdf`);
   };
 
   return (
@@ -280,21 +269,6 @@ export default function SalesPage() {
             <FileText className="w-4 h-4 mr-2" /> Export PDF
           </Button>
         </div>
-
-        <EquipmentTypeModal
-          open={showEquipmentTypeModal}
-          onOpenChange={setShowEquipmentTypeModal}
-          selectedType={currentItem.selectedEquipmentType}
-          onSelect={handleEquipmentTypeSelect}
-          onCancel={() => { setShowEquipmentTypeModal(false); updateCurrentItem({ selectedCategory: "" }); }}
-        />
-
-        {displayedAssignment && (
-          <AssignmentModal 
-            assignment={displayedAssignment} 
-            onClose={() => setDisplayedAssignment(null)} 
-          />
-        )}
 
         <AddSaleDialog
           open={open}
@@ -335,7 +309,6 @@ export default function SalesPage() {
           onViewSerials={async (tool) => {
             const toolId = tool.id || (tool as any).assigned_tool_id;
             if (!toolId) return toast.error("Tool ID not found");
-            
             try {
               const res = await api.getSoldSerials(toolId);
               setViewingSerials({ open: true, tool, soldSerials: res.data });
@@ -345,6 +318,7 @@ export default function SalesPage() {
           }}
         />
 
+        {/* Keeping existing modals for status and serials */}
         <EditStatusDialog
           open={editStatusOpen}
           onOpenChange={setEditStatusOpen}
@@ -375,6 +349,21 @@ export default function SalesPage() {
           soldSerials={viewingSerials.soldSerials}
           onClose={() => setViewingSerials({ open: false, tool: null, soldSerials: [] })}
         />
+
+        <EquipmentTypeModal
+          open={showEquipmentTypeModal}
+          onOpenChange={setShowEquipmentTypeModal}
+          selectedType={currentItem.selectedEquipmentType}
+          onSelect={handleEquipmentTypeSelect}
+          onCancel={() => { setShowEquipmentTypeModal(false); updateCurrentItem({ selectedCategory: "" }); }}
+        />
+
+        {displayedAssignment && (
+          <AssignmentModal 
+            assignment={displayedAssignment} 
+            onClose={() => setDisplayedAssignment(null)} 
+          />
+        )}
       </div>
     </DashboardLayout>
   );

@@ -26,6 +26,7 @@ export interface SaleItem {
 
 export interface Sale {
   id: number;
+  invoice_no?: string;
   customer_id?: number;
   name: string;
   phone: string;
@@ -52,7 +53,7 @@ export interface Customer {
 }
 
 export interface Tool {
-  id: string;
+  id: string | number;
   name: string;
   code: string;
   category: string;
