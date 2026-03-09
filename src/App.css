@@ -40,3 +40,27 @@
 .read-the-docs {
   color: #888;
 }
+
+@media print {
+  /* 🛑 Hides Sidebar, Header, Nav, and all action buttons on paper/PDF */
+  aside,
+  header,
+  nav,
+  .no-print,
+  .print\:hidden,
+  button {
+    display: none !important;
+  }
+  
+  /* 🟢 Forces the white invoice to take full width and hide the dashboard background */
+  main,
+  .dashboard-content,
+  #printable-invoice {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+    width: 100% !important;
+    box-shadow: none !important;
+    background-color: white !important;
+  }
+}

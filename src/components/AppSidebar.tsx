@@ -8,6 +8,7 @@ import {
   FileText,
   Key,
   ReceiptText,
+  Wallet, // ✅ Added Wallet icon for Purchases
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import {

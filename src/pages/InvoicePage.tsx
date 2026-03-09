@@ -13,12 +13,12 @@ const InvoicePage = () => {
   const savedSale = localStorage.getItem("currentInvoice");
   
   // 2. Handle the empty state inside the layout so the sidebar still shows
-  if (!savedSale) {
+  if (!savedSale || savedSale === "undefined") {
     return (
       <DashboardLayout>
         <div className="p-10 text-center text-white">
           <p>No Invoice Data Found. Please go back to Sales.</p>
-          <Button onClick={() => navigate("/sales")} className="mt-4 italic">
+          <Button onClick={() => navigate("/sales")} className="mt-4 italic bg-slate-800 hover:bg-slate-700">
             <ArrowLeft className="w-4 h-4 mr-2" /> Return to Sales Table
           </Button>
         </div>
@@ -26,34 +26,50 @@ const InvoicePage = () => {
     );
   }
   
-  const sale = JSON.parse(savedSale);
+  // Safely parse the main sale object
+  let sale;
+  try {
+    sale = JSON.parse(savedSale);
+  } catch (error) {
+    console.error("Failed to parse sale from localStorage", error);
+    sale = {}; // Fallback to empty object to prevent crash
+  }
+
+  // Safely parse serials helper
+  const safelyParseSerials = (serialData: any) => {
+    if (Array.isArray(serialData)) return serialData;
+    if (!serialData) return [];
+    try {
+      return JSON.parse(serialData);
+    } catch (e) {
+      return [serialData]; // If it fails to parse, just return it as a single-item array
+    }
+  };
 
   // 3. Format the data to match the "InvoiceProps" interface exactly
   const formattedInvoiceData = {
-    invoiceNo: sale.invoice_number || `INV-${sale.id}`, //
-    date: sale.date_sold ? new Date(sale.date_sold).toLocaleDateString('en-GB', {
+    invoiceNo: sale?.invoice_number || `INV-${sale?.id || 'Unknown'}`, 
+    date: sale?.date_sold ? new Date(sale.date_sold).toLocaleDateString('en-GB', {
       day: '2-digit',
       month: 'short',
       year: 'numeric'
-    }) : "N/A", //
+    }) : "N/A",
     customer: {
-      name: sale.name, //
-      address: sale.state || "Lagos, Nigeria", //
+      name: sale?.name || "Unknown Customer", 
+      address: sale?.state || "Lagos, Nigeria", 
     },
-    items: sale.items.map((item: any) => ({
-      description: item.equipment, //
-      equipment_type: item.equipment_type,
-      // Parse serials from the sale item
-      serials: Array.isArray(item.serial_set) 
-        ? item.serial_set 
-        : JSON.parse(item.serial_set || "[]"),
+    // 🎯 CRITICAL FIX: Added (sale?.items || []) to prevent .map() crashes
+    items: (sale?.items || []).map((item: any) => ({
+      description: item?.equipment || "Unknown Item", 
+      equipment_type: item?.equipment_type || "N/A",
+      serials: safelyParseSerials(item?.serial_set),
       qty: 1, 
-      rate: parseFloat(item.cost), //
+      rate: parseFloat(item?.cost || item?.price || "0"), // Added fallback for price/cost
       discount: 0 
     })),
-    paymentMade: sale.payment_status === 'completed' 
-      ? parseFloat(sale.total_cost) 
-      : parseFloat(sale.initial_deposit || "0") //
+    paymentMade: sale?.payment_status === 'completed' 
+      ? parseFloat(sale?.total_cost || "0") 
+      : parseFloat(sale?.initial_deposit || "0") 
   };
 
   return (
@@ -72,7 +88,7 @@ const InvoicePage = () => {
           </Button>
         </div>
 
-        {/* 🚀 Passing the 'data' prop here fixes your error */}
+        {/* 🚀 Passing the 'data' prop safely */}
         <div className="print:m-0">
           <InvoiceTemplate data={formattedInvoiceData} />
         </div>

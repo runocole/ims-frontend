@@ -37,6 +37,9 @@ import { CartProvider } from './context/CartContext';
 import ProductDetailPage from "./pages/ProductDetailPage";
 import MobileNavigation from "./components/MobileNavigation";
 import CodesManagement from "./pages/CodesManagement"; 
+import PurchasesPage from "./pages/PurchasesPage";
+import PurchasesIndex from "./pages/PurchasesIndex";
+
 
 const queryClient = new QueryClient();
 
@@ -101,6 +104,27 @@ const App = () => (
                 element={
                   <PrivateRoute 
                     element={<InvoicePage />} 
+                    allowedRoles={["staff", "admin"]} 
+                  />
+                }
+              />
+
+              <Route
+                path="sales/:phone"
+                element={
+                  <PrivateRoute 
+                    element={<PurchasesIndex />} 
+                    allowedRoles={["staff", "admin"]} 
+                  />
+                }
+              />
+
+              {/* 2. The Customer Specific Ledger (Fires when you click "View Ledger" or the icon in the Sales table) */}
+              <Route
+                path="sales/:phone/:invoice_number"
+                element={
+                  <PrivateRoute 
+                    element={<PurchasesPage />} 
                     allowedRoles={["staff", "admin"]} 
                   />
                 }
