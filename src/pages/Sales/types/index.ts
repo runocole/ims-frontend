@@ -41,6 +41,7 @@ export interface Sale {
   payment_months?: string;
   expiry_date?: string;
   payment_status?: string;
+  status?: string;
 }
 
 export interface Customer {

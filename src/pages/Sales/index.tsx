@@ -9,7 +9,7 @@ import autoTable from "jspdf-autotable";
 import { toast } from "react-hot-toast";
 
 // Types
-import type { Customer } from "./types";
+import type { Customer, Sale } from "./types";
 
 // Components
 import { CustomerSearch } from "./components/CustomerSearch";
@@ -183,30 +183,38 @@ export default function SalesPage() {
       addSale(res.data);
 
       if (action === "send") {
-        // Prepare data with string-safe ID for the invoice page
-        const invoiceData = {
-          invoiceNo: res.data.invoice_no || `INV-${String(res.data.id).slice(0, 5)}`,
-          date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          customer: {
-            name: selectedCustomer.name,
-            address: `${selectedCustomer.state}, Nigeria`,
-          },
-          items: saleItems.map(item => ({
-            description: item.equipment,
-            qty: 1,
-            rate: parseFloat(item.cost),
-            discount: 0
-          })),
-          paymentMade: parseFloat(saleDetails.initial_deposit || "0")
-        };
+  const generatedSale = res.data as Sale; // Cast to your updated Sale type
 
-        localStorage.setItem("last_generated_invoice", JSON.stringify(invoiceData));
-        toast.success("Sale Recorded! Redirecting to Invoice...");
-        
-        setTimeout(() => {
-          navigate(`/invoice/${res.data.id}`);
-        }, 1500);
-      } else {
+  const invoiceData = {
+    // 1. Safely check for invoice_no
+    // 2. Safely convert ID to string before slicing
+    invoiceNo: generatedSale.invoice_no || `INV-${String(generatedSale.id).slice(0, 5)}`,
+    
+    date: new Date().toLocaleDateString('en-GB', { 
+      day: '2-digit', 
+      month: 'short', 
+      year: 'numeric' 
+    }),
+    customer: {
+      name: selectedCustomer.name,
+      address: `${selectedCustomer.state}, Nigeria`,
+    },
+    items: saleItems.map(item => ({
+      description: item.equipment,
+      qty: 1,
+      rate: parseFloat(item.cost),
+      discount: 0
+    })),
+    paymentMade: parseFloat(saleDetails.initial_deposit || "0")
+  };
+
+  localStorage.setItem("last_generated_invoice", JSON.stringify(invoiceData));
+  toast.success("Sale Recorded! Generating Invoice...");
+  
+  setTimeout(() => {
+    navigate(`/invoice/${generatedSale.id}`);
+  }, 1000);
+} else {
         toast.success("Sale saved as draft!");
       }
 

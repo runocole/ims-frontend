@@ -49,7 +49,7 @@ const PaymentDetails = ({
             </SelectContent>
           </Select>
         </div>
-        <div>
+        {/* <div>
           <Label className="text-white">Expiry Date</Label>
           <Input
             type="date"
@@ -57,7 +57,7 @@ const PaymentDetails = ({
             onChange={(e) => onExpiryDateChange(e.target.value)}
             className="bg-slate-700 text-white border-slate-600"
           />
-        </div>
+        </div> */}
       </div>
 
       {saleDetails.payment_plan === "Yes" && (
@@ -106,4 +106,4 @@ const PaymentDetails = ({
   );
 };
 
-export { PaymentDetails}
+export { PaymentDetails }

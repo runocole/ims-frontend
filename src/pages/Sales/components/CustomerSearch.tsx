@@ -58,7 +58,7 @@ const CustomerSearch = ({
   };
 
   return (
-    <Card className="bg-slate-900 border-slate-700">
+    <Card className="bg-blue-950 border-slate-700">
       <CardHeader>
         <CardTitle className="text-white">Find Customer for New Sale</CardTitle>
       </CardHeader>

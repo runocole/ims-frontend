@@ -62,12 +62,11 @@ import {
 } from "../services/api";
 import { toast } from "sonner";
 
-// Update interface to include naira_cost
 interface EquipmentType {
   id: string;
   name: string;
   default_cost: string;
-  naira_cost?: string; // NEW: Added naira cost field
+  naira_cost?: string; 
   description?: string;
   created_at?: string;
   category: string;
@@ -86,6 +85,7 @@ interface Invoice {
   created_at: string;
   equipment_count: number;
   total_value: number;
+  total_naira_value?: number; // ADDED: To permanently hold the summed NGN value
   exchange_rate?: string;
 }
 
@@ -128,25 +128,21 @@ const Settings: React.FC = () => {
   const [selectedInvoice, setSelectedInvoice] = useState<string>("");
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
 
-  // Form state for equipment types - UPDATED to include naira_cost
   const [equipmentForm, setEquipmentForm] = useState({
     name: "",
     default_cost: "",
-    naira_cost: "", // NEW: Added naira cost field
+    naira_cost: "", 
     category: "Receiver",
   });
 
-  // Form state for suppliers
   const [supplierForm, setSupplierForm] = useState({
     name: "",
   });
 
-  // Filter equipment types by category
   const filteredEquipmentTypes = categoryFilter === "all" 
     ? equipmentTypes 
     : equipmentTypes.filter(type => type.category === categoryFilter);
 
-  // Group equipment by invoice
   const equipmentByInvoice = equipmentTypes.reduce((acc, equipment) => {
     const invoiceNum = equipment.invoice_number || "No Invoice";
     if (!acc[invoiceNum]) {
@@ -156,7 +152,45 @@ const Settings: React.FC = () => {
     return acc;
   }, {} as Record<string, EquipmentType[]>);
 
-  // Fetch data on mount
+  // FIXED: generateInvoices now preserves existing invoices and safely calculates both USD and NGN totals
+  const generateInvoices = (equipmentData: EquipmentType[]) => {
+    setInvoices(prevInvoices => {
+      const invoiceMap = new Map();
+      
+      // Keep existing invoices so empty ones (or newly created ones) don't vanish
+      prevInvoices.forEach(inv => {
+        invoiceMap.set(inv.invoice_number, {
+          ...inv,
+          equipment_count: 0,
+          total_value: 0,
+          total_naira_value: 0 // Reset totals to recalculate
+        });
+      });
+
+      equipmentData.forEach(equipment => {
+        if (equipment.invoice_number) {
+          if (!invoiceMap.has(equipment.invoice_number)) {
+            invoiceMap.set(equipment.invoice_number, {
+              id: equipment.invoice_number,
+              invoice_number: equipment.invoice_number,
+              created_at: equipment.created_at || new Date().toISOString(),
+              equipment_count: 0,
+              total_value: 0,
+              total_naira_value: 0,
+              exchange_rate: ""
+            });
+          }
+          const invoice = invoiceMap.get(equipment.invoice_number);
+          invoice.equipment_count += 1;
+          invoice.total_value += parseFloat(equipment.default_cost) || 0;
+          invoice.total_naira_value += parseFloat(equipment.naira_cost || "0") || 0; // Calculates permanent NGN sum
+        }
+      });
+
+      return Array.from(invoiceMap.values());
+    });
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
@@ -166,11 +200,10 @@ const Settings: React.FC = () => {
           getSuppliers()
         ]);
         
-        // Transform API data to match our local types
         const transformedEquipmentData = (equipmentData || []).map((item: any) => ({
           ...item,
           default_cost: String(item.default_cost || ""),
-          naira_cost: String(item.naira_cost || ""), // NEW: Include naira_cost
+          naira_cost: String(item.naira_cost || ""), 
           id: String(item.id),
           category: item.category || "Receiver",
           invoice_number: item.invoice_number || ""
@@ -184,7 +217,6 @@ const Settings: React.FC = () => {
         setEquipmentTypes(transformedEquipmentData);
         setSuppliers(transformedSupplierData);
         
-        // Generate invoices from equipment data
         generateInvoices(transformedEquipmentData);
       } catch (err) {
         console.error("Error fetching settings data:", err);
@@ -196,37 +228,13 @@ const Settings: React.FC = () => {
     fetchData();
   }, []);
 
-  const generateInvoices = (equipmentData: EquipmentType[]) => {
-    const invoiceMap = new Map();
-    
-    equipmentData.forEach(equipment => {
-      if (equipment.invoice_number) {
-        if (!invoiceMap.has(equipment.invoice_number)) {
-          invoiceMap.set(equipment.invoice_number, {
-            id: equipment.invoice_number,
-            invoice_number: equipment.invoice_number,
-            created_at: equipment.created_at || new Date().toISOString(),
-            equipment_count: 0,
-            total_value: 0,
-            exchange_rate: ""
-          });
-        }
-        const invoice = invoiceMap.get(equipment.invoice_number);
-        invoice.equipment_count += 1;
-        invoice.total_value += parseFloat(equipment.default_cost) || 0;
-      }
-    });
-
-    setInvoices(Array.from(invoiceMap.values()));
-  };
-
   const fetchEquipmentTypes = async () => {
     try {
       const data = await getEquipmentTypes();
       const transformedData = (data || []).map((item: any) => ({
         ...item,
         default_cost: String(item.default_cost || ""),
-        naira_cost: String(item.naira_cost || ""), // NEW: Include naira_cost
+        naira_cost: String(item.naira_cost || ""),
         id: String(item.id),
         category: item.category || "Receiver",
         invoice_number: item.invoice_number || ""
@@ -255,22 +263,19 @@ const Settings: React.FC = () => {
     setInvoiceNumber("");
     setExchangeRate("");
     setSelectedInvoice("");
-    setEquipmentForm({ name: "", default_cost: "", naira_cost: "", category: "Receiver" }); // UPDATED
+    setEquipmentForm({ name: "", default_cost: "", naira_cost: "", category: "Receiver" });
     setSupplierForm({ name: "" });
     setIsEditMode(false);
     setEditingId(null);
   };
 
-  // Calculate NGN cost when USD cost or exchange rate changes - UPDATED
   useEffect(() => {
     if (equipmentForm.default_cost) {
       let rate: number | null = null;
       
-      // For new equipment: use the current exchangeRate from the form
       if (!isEditMode && exchangeRate) {
         rate = parseFloat(exchangeRate);
       }
-      // For existing invoice: get exchange rate from the selected invoice
       else if (!isEditMode && selectedInvoice) {
         const selectedInvoiceData = invoices.find(inv => inv.invoice_number === selectedInvoice);
         if (selectedInvoiceData?.exchange_rate) {
@@ -291,7 +296,6 @@ const Settings: React.FC = () => {
     }
   }, [equipmentForm.default_cost, exchangeRate, selectedInvoice, isEditMode, invoices]);
 
-  // Invoice management
   const openAddInvoiceDialog = () => {
     resetForms();
     setDialogType('invoice');
@@ -301,7 +305,6 @@ const Settings: React.FC = () => {
     resetForms();
     if (invoiceNum) {
       setSelectedInvoice(invoiceNum);
-      // Get the exchange rate from the selected invoice
       const selectedInvoiceData = invoices.find(inv => inv.invoice_number === invoiceNum);
       if (selectedInvoiceData?.exchange_rate) {
         setExchangeRate(selectedInvoiceData.exchange_rate);
@@ -316,7 +319,7 @@ const Settings: React.FC = () => {
     setEquipmentForm({
       name: type.name || "",
       default_cost: type.default_cost || "",
-      naira_cost: type.naira_cost || "", // NEW: Include naira_cost
+      naira_cost: type.naira_cost || "", 
       category: type.category || "Receiver",
     });
     setIsEditMode(true);
@@ -324,7 +327,6 @@ const Settings: React.FC = () => {
     setDialogType('equipment');
   };
 
-  // Supplier dialogs
   const openAddSupplierDialog = () => {
     resetForms();
     setDialogType('supplier');
@@ -339,14 +341,12 @@ const Settings: React.FC = () => {
     setDialogType('supplier');
   };
 
-  // Handle invoice creation
   const handleCreateInvoice = () => {
     if (!invoiceNumber.trim()) {
       toast.error("Invoice number is required");
       return;
     }
 
-    // Check if invoice already exists
     if (invoices.find(inv => inv.invoice_number === invoiceNumber.trim())) {
       toast.error("Invoice number already exists");
       return;
@@ -358,6 +358,7 @@ const Settings: React.FC = () => {
       created_at: new Date().toISOString(),
       equipment_count: 0,
       total_value: 0,
+      total_naira_value: 0,
       exchange_rate: exchangeRate || ""
     };
 
@@ -381,58 +382,50 @@ const Settings: React.FC = () => {
       return;
     }
 
-    // For new equipment, require an invoice
     if (!isEditMode && !selectedInvoice) {
       toast.error("Please select an invoice for this equipment");
       return;
     }
 
-    // Convert to string for the API - UPDATED to include naira_cost
     const payload = {
       name: equipmentForm.name.trim(),
       default_cost: equipmentForm.default_cost,
-      naira_cost: equipmentForm.naira_cost || "0", // NEW: Include naira_cost
+      naira_cost: equipmentForm.naira_cost || "0", 
       category: equipmentForm.category,
       invoice_number: isEditMode ? undefined : selectedInvoice
     };
 
     try {
       let result: EquipmentType;
+      let newList: EquipmentType[] = [];
+
       if (isEditMode && editingId) {
         result = await updateEquipmentType(editingId, payload);
-        // Update local state
-        setEquipmentTypes(prev => prev.map(item => 
+        newList = equipmentTypes.map(item => 
           item.id === editingId ? { 
             ...result, 
             default_cost: String(result.default_cost || ""),
-            naira_cost: String(result.naira_cost || "") // NEW: Include naira_cost
+            naira_cost: String(result.naira_cost || "") 
           } : item
-        ));
+        );
+        setEquipmentTypes(newList);
         toast.success("Equipment type updated successfully");
       } else {
         result = await createEquipmentType(payload);
-        // Add to local state
         const newEquipment = { 
           ...result, 
           default_cost: String(result.default_cost || ""),
-          naira_cost: String(result.naira_cost || ""), // NEW: Include naira_cost
+          naira_cost: String(result.naira_cost || ""), 
           invoice_number: selectedInvoice 
         };
-        setEquipmentTypes(prev => [...prev, newEquipment]);
-        
-        // Update invoice stats
-        setInvoices(prev => prev.map(inv => 
-          inv.invoice_number === selectedInvoice 
-            ? {
-                ...inv,
-                equipment_count: inv.equipment_count + 1,
-                total_value: inv.total_value + (parseFloat(equipmentForm.default_cost) || 0)
-              }
-            : inv
-        ));
-        
+        newList = [...equipmentTypes, newEquipment];
+        setEquipmentTypes(newList);
         toast.success(`Equipment type created successfully for invoice ${selectedInvoice}`);
       }
+
+      // Re-trigger invoice math calculation automatically
+      generateInvoices(newList);
+
       setDialogType(null);
       resetForms();
     } catch (err) {
@@ -455,14 +448,12 @@ const Settings: React.FC = () => {
       let result: Supplier;
       if (isEditMode && editingId) {
         result = await updateSupplier(editingId, payload);
-        // Update local state
         setSuppliers(prev => prev.map(item => 
           item.id === editingId ? result : item
         ));
         toast.success("Supplier updated successfully");
       } else {
         result = await createSupplier(payload);
-        // Add to local state
         setSuppliers(prev => [...prev, result]);
         toast.success("Supplier created successfully");
       }
@@ -477,7 +468,6 @@ const Settings: React.FC = () => {
   const handleDeleteEquipment = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this equipment type?")) return;
     try {
-      const equipmentToDelete = equipmentTypes.find(eq => eq.id === id);
       await deleteEquipmentType(id);
       toast.success("Equipment type deleted successfully");
       await fetchEquipmentTypes();
@@ -511,7 +501,6 @@ const Settings: React.FC = () => {
     });
   };
 
-  // Get category counts for the cards
   const getCategoryCounts = () => {
     const counts: { [key: string]: number } = {};
     CATEGORY_OPTIONS.forEach(category => {
@@ -616,13 +605,19 @@ const Settings: React.FC = () => {
                                       {new Date(invoice.created_at).toLocaleDateString()}
                                     </span>
                                     <span>{invoice.equipment_count} items</span>
+                                    
+                                    {/* FIXED: Safe USD Rendering */}
                                     <span className="text-green-400 font-semibold">
-                                      ${invoice.total_value.toLocaleString()}
+                                      ${Number(invoice.total_value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
-                                    {invoice.exchange_rate && (
-                                      <span className="text-blue-400 font-semibold">
-                                        ₦{(invoice.total_value * parseFloat(invoice.exchange_rate)).toLocaleString()}
+                                    
+                                    {/* FIXED: Safe NGN Rendering. Pulls directly from the permanently saved equipment values */}
+                                    {(Number(invoice.total_naira_value) > 0 || invoice.exchange_rate) ? (
+                                      <span className="text-blue-400 font-semibold bg-blue-900/30 px-2 py-0.5 rounded border border-blue-800/50">
+                                        ₦{Number(invoice.total_naira_value || (invoice.total_value * parseFloat(invoice.exchange_rate || "0"))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                       </span>
+                                    ) : (
+                                      <span className="text-gray-500 text-xs italic">No NGN Cost</span>
                                     )}
                                   </div>
                                 </div>
@@ -670,7 +665,6 @@ const Settings: React.FC = () => {
                                     {invoiceEquipment.map((equipment) => {
                                       const CategoryIcon = CATEGORY_ICONS[equipment.category as keyof typeof CATEGORY_ICONS] || Box;
                                       const costUSD = parseFloat(equipment.default_cost) || 0;
-                                      // Use stored naira_cost if available, otherwise calculate from invoice exchange rate
                                       const costNGN = equipment.naira_cost ? 
                                         parseFloat(equipment.naira_cost) : 
                                         (invoice.exchange_rate ? costUSD * parseFloat(invoice.exchange_rate) : 0);
@@ -688,12 +682,12 @@ const Settings: React.FC = () => {
                                           </TableCell>
                                           <TableCell>
                                             <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-950/40 text-green-400 rounded-md font-semibold border border-green-800/30">
-                                              ${costUSD.toLocaleString()}
+                                              ${costUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                             </span>
                                           </TableCell>
                                           <TableCell>
                                             <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-950/40 text-blue-400 rounded-md font-semibold border border-blue-800/30">
-                                              ₦{(costNGN || 0).toLocaleString()}
+                                              ₦{(costNGN || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                             </span>
                                           </TableCell>
                                           <TableCell className="text-right">
@@ -780,7 +774,7 @@ const Settings: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Supplier Management - Medium Blue */}
+        {/* Supplier Management */}
         <Card className="border-[#2a4375]/80 bg-gradient-to-br from-[#162a52] to-[#1e3a78]">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -846,7 +840,7 @@ const Settings: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* System Info Card - Lightest Blue */}
+        {/* System Info Card */}
         <Card className="border-[#3d5a9e]/60 bg-gradient-to-br from-[#1e3a78] to-[#2a4375]">
           <CardContent className="p-6">
             <div className="flex items-start gap-4">
@@ -905,7 +899,6 @@ const Settings: React.FC = () => {
               </p>
             </div>
 
-            {/* Exchange Rate Field */}
             <div className="space-y-2">
               <Label htmlFor="exchange-rate" className="text-sm font-medium text-gray-300 flex items-center gap-2">
                 <DollarSign className="h-4 w-4 text-green-400" />
@@ -948,7 +941,7 @@ const Settings: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Equipment Type Dialog - UPDATED WITH NAIRA COST */}
+      {/* Equipment Type Dialog */}
       <Dialog open={dialogType === 'equipment'} onOpenChange={(open) => !open && setDialogType(null)}>
         <DialogContent className="max-w-2xl bg-[#0f1f3d] border-[#1e3a78]">
           <DialogHeader>
@@ -1045,7 +1038,6 @@ const Settings: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* USD Cost */}
               <div className="space-y-2">
                 <Label htmlFor="equipment-cost" className="text-sm font-medium text-gray-300">
                   Default Cost (USD) <span className="text-red-400">*</span>
@@ -1064,7 +1056,6 @@ const Settings: React.FC = () => {
                 </p>
               </div>
 
-              {/* NGN Cost - NEW */}
               <div className="space-y-2">
                 <Label htmlFor="naira-cost" className="text-sm font-medium text-gray-300">
                   Default Cost (NGN) <span className="text-gray-400">(Auto-calculated)</span>
@@ -1077,7 +1068,7 @@ const Settings: React.FC = () => {
                   onChange={(e) => setEquipmentForm({ ...equipmentForm, naira_cost: e.target.value })}
                   placeholder="0.00"
                   className="bg-[#162a52] border-[#2a4375] text-white text-lg font-medium"
-                  readOnly={!isEditMode} // Read-only for new items, editable for edits
+                  readOnly={!isEditMode} 
                 />
                 <p className="text-xs text-gray-400">
                   {isEditMode 
@@ -1088,7 +1079,6 @@ const Settings: React.FC = () => {
               </div>
             </div>
 
-            {/* Exchange Rate Display - UPDATED */}
             {(exchangeRate || (selectedInvoice && invoices.find(inv => inv.invoice_number === selectedInvoice)?.exchange_rate)) && !isEditMode && (
               <div className="bg-green-900/20 border border-green-700/30 rounded-lg p-3">
                 <div className="flex items-center gap-2 text-green-300 text-sm">

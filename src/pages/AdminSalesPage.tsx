@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom"; // ADDED: For navigation
 import { getSales } from "../services/api";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
-import { Download, Search, DollarSign, Calendar, FileText, Package, CreditCard } from "lucide-react";
+import { Download, Search, DollarSign, Calendar, FileText, Package, CreditCard, UserSearch } from "lucide-react"; // ADDED: UserSearch for ledger icon
 import { DashboardLayout } from "../components/DashboardLayout";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
@@ -45,8 +46,8 @@ interface Sale {
     name: string;
     email: string;
   };
-  sold_by?: string; // ADDED: This field exists in your backend
-  staff?: number;   // ADDED: This field exists in your backend
+  sold_by?: string; 
+  staff?: number;   
 }
 
 interface UserProfile {
@@ -56,6 +57,8 @@ interface UserProfile {
 }
 
 const AdminSalesPage: React.FC = () => {
+  const navigate = useNavigate(); // ADDED: Hook for routing
+
   const [sales, setSales] = useState<Sale[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState<keyof Sale>("date_sold");
@@ -71,12 +74,9 @@ const AdminSalesPage: React.FC = () => {
     }
   }, []);
 
-  // UPDATED: Get staff name - uses sold_by field from your backend
   const getStaffName = (sale: Sale): string => {
-    // Priority 1: Use sold_by field (staff email from your backend)
     if (sale.sold_by) {
       const email = sale.sold_by;
-      // Convert email to readable name: "john.doe@company.com" -> "John Doe"
       const username = email.split('@')[0];
       const nameParts = username.split('.');
       const friendlyName = nameParts.map(part => 
@@ -84,8 +84,6 @@ const AdminSalesPage: React.FC = () => {
       ).join(' ');
       return friendlyName;
     }
-
-    // Fallback to other fields
     if (sale.staff_name && sale.staff_name !== "Unknown Staff") {
       return sale.staff_name;
     }
@@ -95,8 +93,6 @@ const AdminSalesPage: React.FC = () => {
     if (sale.user?.name) {
       return sale.user.name;
     }
-    
-    // Final fallback
     return currentUser?.name || "Sales Team";
   };
 
@@ -106,7 +102,6 @@ const AdminSalesPage: React.FC = () => {
       try {
         setLoading(true);
         const data = await getSales();
-        console.log("📊 Raw sales data:", data);
         setSales(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error("Failed to load sales:", error);
@@ -175,6 +170,12 @@ const AdminSalesPage: React.FC = () => {
     setSortOrder(order);
   };
 
+  // ADDED: Reused the View Invoice logic from your main Sales Table
+  const handleViewInvoice = (sale: Sale) => {
+    localStorage.setItem("currentInvoice", JSON.stringify(sale));
+    navigate(`/invoice/${sale.invoice_number || sale.id}`);
+  };
+
   // Calculate stats
   const stats = {
     totalSales: sales.length,
@@ -182,7 +183,8 @@ const AdminSalesPage: React.FC = () => {
     totalStaff: new Set(sales.map(sale => getStaffName(sale))).size,
     pendingPayments: sales.filter(sale => 
       sale.payment_status?.toLowerCase() === 'pending' || 
-      sale.payment_status?.toLowerCase() === 'installment'
+      sale.payment_status?.toLowerCase() === 'installment' ||
+      sale.payment_status?.toLowerCase() === 'ongoing'
     ).length,
     totalInstallments: sales.filter(sale => 
       sale.payment_plan?.toLowerCase() === 'yes'
@@ -231,6 +233,7 @@ const AdminSalesPage: React.FC = () => {
   const getStatusColor = (status: string) => {
     switch (status?.toLowerCase()) {
       case 'completed': return 'bg-green-900/50 text-green-300 border-green-700';
+      case 'ongoing': return 'bg-cyan-900/50 text-cyan-300 border-cyan-700'; // ADDED ONGOING COLOR
       case 'pending': return 'bg-yellow-900/50 text-yellow-300 border-yellow-700';
       case 'installment': return 'bg-blue-900/50 text-blue-300 border-blue-700';
       case 'failed': return 'bg-red-900/50 text-red-300 border-red-700';
@@ -270,60 +273,6 @@ const AdminSalesPage: React.FC = () => {
       </DashboardLayout>
     );
   }
-
-  // UPDATED: Debug component to show actual backend fields
-  const DebugComponent = () => {
-    if (sales.length === 0) return null;
-    
-    return (
-      <Card className="bg-red-900 border-red-700 mt-6">
-        <CardHeader>
-          <CardTitle className="text-white">🚨 BACKEND DATA DEBUG 🚨</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-sm space-y-4">
-            <div>
-              <p className="text-yellow-300 font-bold">First 3 Sales from Backend:</p>
-              <pre className="bg-black p-4 rounded mt-2 overflow-auto text-xs">
-  {JSON.stringify(sales.slice(0, 3).map(sale => ({
-    id: sale.id,
-    customer: sale.name,
-    // ALL staff-related fields including sold_by
-    sold_by: sale.sold_by,
-    staff: sale.staff,
-    staff_name: sale.staff_name,
-    user: sale.user,
-    created_by: sale.created_by,
-    user_id: sale.user_id,
-    resolved_name: getStaffName(sale)
-  })), null, 2)}
-              </pre>
-            </div>
-            
-            <div>
-              <p className="text-yellow-300 font-bold">API Response Structure:</p>
-              <pre className="bg-black p-4 rounded mt-2 overflow-auto text-xs">
-  {JSON.stringify({
-    total_sales: sales.length,
-    sample_staff_fields: {
-      sales_with_sold_by: sales.filter(s => s.sold_by).length,
-      sales_with_staff: sales.filter(s => s.staff).length,
-      sales_with_staff_name: sales.filter(s => s.staff_name).length,
-      sales_with_user: sales.filter(s => s.user).length,
-      sales_with_created_by: sales.filter(s => s.created_by).length,
-      sales_with_user_id: sales.filter(s => s.user_id).length,
-      sales_with_any_staff_info: sales.filter(s => 
-        s.sold_by || s.staff || s.staff_name || s.user || s.created_by || s.user_id
-      ).length
-    }
-  }, null, 2)}
-              </pre>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
 
   return (
     <DashboardLayout>
@@ -443,7 +392,7 @@ const AdminSalesPage: React.FC = () => {
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-sm">
                   <thead>
-                    <tr className="bg-slate-800 text-left border-b border-slate-700">
+                    <tr className="bg-slate-800 text-left border-b border-slate-700 whitespace-nowrap">
                       {[
                         { key: "name", label: "Customer" },
                         { key: "phone", label: "Phone" },
@@ -456,12 +405,13 @@ const AdminSalesPage: React.FC = () => {
                         { key: "payment_status", label: "Status" },
                         { key: "date_sold", label: "Date Sold" },
                         { key: "staff_name", label: "Sold By" },
-                        { key: "invoice_number", label: "Invoice" }
+                        { key: "invoice_number", label: "Invoice" },
+                        { key: "actions", label: "Actions" } // ADDED ACTIONS HEADER
                       ].map(({ key, label }) => (
                         <th
                           key={key}
-                          className="p-3 cursor-pointer text-gray-300 font-semibold text-left hover:bg-slate-700/50 transition-colors"
-                          onClick={() => handleSort(key as keyof Sale)}
+                          className={`p-3 text-gray-300 font-semibold text-left hover:bg-slate-700/50 transition-colors ${key !== "actions" ? "cursor-pointer" : ""}`}
+                          onClick={() => key !== "actions" && handleSort(key as keyof Sale)}
                         >
                           <div className="flex items-center gap-1">
                             {label}
@@ -478,18 +428,18 @@ const AdminSalesPage: React.FC = () => {
                   <tbody>
                     {sortedSales.map((sale) => (
                       <tr key={sale.id} className="border-b border-slate-700 hover:bg-slate-800/50">
-                        <td className="p-3 text-white font-medium">{sale.name}</td>
-                        <td className="p-3 text-gray-300">{sale.phone}</td>
-                        <td className="p-3 text-gray-300">{sale.state}</td>
-                        <td className="p-3 text-gray-300" title={sale.items?.map(item => item.equipment).join(', ')}>
+                        <td className="p-3 text-white font-medium whitespace-nowrap">{sale.name}</td>
+                        <td className="p-3 text-gray-300 whitespace-nowrap">{sale.phone}</td>
+                        <td className="p-3 text-gray-300 whitespace-nowrap">{sale.state}</td>
+                        <td className="p-3 text-gray-300 whitespace-nowrap" title={sale.items?.map(item => item.equipment).join(', ')}>
                           {formatEquipment(sale.items || [])}
                         </td>
-                        <td className="p-3 text-green-400 font-semibold">
+                        <td className="p-3 text-green-400 font-semibold whitespace-nowrap">
                           ₦{parseFloat(sale.total_cost || "0").toLocaleString()}
                         </td>
-                        <td className="p-3 text-gray-300">{sale.payment_plan || "-"}</td>
+                        <td className="p-3 text-gray-300 whitespace-nowrap">{sale.payment_plan || "-"}</td>
                         
-                        <td className="p-3">
+                        <td className="p-3 whitespace-nowrap">
                           {sale.initial_deposit ? (
                             <div className="space-y-1">
                               <div className="text-yellow-400 font-semibold">
@@ -506,7 +456,7 @@ const AdminSalesPage: React.FC = () => {
                           )}
                         </td>
                         
-                        <td className="p-3">
+                        <td className="p-3 whitespace-nowrap">
                           {sale.payment_months ? (
                             <div className="space-y-1">
                               <div className="text-blue-400 font-semibold">
@@ -523,21 +473,46 @@ const AdminSalesPage: React.FC = () => {
                           )}
                         </td>
                         
-                        <td className="p-3">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(sale.payment_status || '')}`}>
+                        <td className="p-3 whitespace-nowrap">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium uppercase border tracking-wider ${getStatusColor(sale.payment_status || '')}`}>
                             {sale.payment_status || "Unknown"}
                           </span>
                         </td>
-                        <td className="p-3 text-gray-300">
+                        <td className="p-3 text-gray-300 whitespace-nowrap">
                           {sale.date_sold ? new Date(sale.date_sold).toLocaleDateString() : "-"}
                         </td>
-                        <td className="p-3">
+                        <td className="p-3 whitespace-nowrap">
                           <span className="text-blue-300 font-medium">
                             {getStaffName(sale)}
                           </span>
                         </td>
-                        <td className="p-3 text-gray-300 font-mono text-xs">
+                        <td className="p-3 text-gray-300 font-mono text-xs whitespace-nowrap">
                           {sale.invoice_number || "-"}
+                        </td>
+
+                        {/* ADDED: ACTIONS COLUMN DATA */}
+                        <td className="p-3">
+                          <div className="flex items-center gap-1">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              onClick={() => handleViewInvoice(sale)} 
+                              className="text-blue-400 hover:bg-blue-900/30"
+                              title="View Invoice"
+                            >
+                              <FileText className="w-4 h-4" />
+                            </Button>
+
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              onClick={() => navigate(`/sales/${sale.phone}`)} 
+                              className="text-emerald-400 hover:bg-emerald-900/30"
+                              title="Customer Ledger"
+                            >
+                              <UserSearch className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}

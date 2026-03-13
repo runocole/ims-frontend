@@ -12,7 +12,7 @@ import {
 import {
    Search, Package, UserCheck, RefreshCcw, Loader2,
   FolderPlus, Upload, Download, FolderOpen, ChevronLeft,
-  FileSpreadsheet, X, Check, Folder, AlertCircle,
+  FileSpreadsheet, X, Check, Folder, AlertCircle, Mail
 } from "lucide-react";
 import { toast } from "../components/ui/use-toast";
 import axios from "axios";
@@ -89,7 +89,7 @@ async function uploadCSVToBatch(
   const form = new FormData();
   form.append("file", file);
   const res = await axios.post(`${API_URL}/code-batches/${batchId}/upload-csv/`, form, {
-    headers: authHeader(), // axios sets multipart boundary automatically
+    headers: authHeader(), 
   });
   return res.data;
 }
@@ -105,6 +105,14 @@ async function downloadBatchCSV(batchId: number, batchNumber: string) {
   a.download = `batch_${batchNumber}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// NEW: API Call to trigger bulk emails
+async function sendBulkExpirationEmails(batchId: number): Promise<{ sent: number; failed: number }> {
+  const res = await axios.post(`${API_URL}/code-batches/${batchId}/send-expiration-emails/`, {}, {
+    headers: authHeader(),
+  });
+  return res.data;
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -131,12 +139,15 @@ const CodesManagement = () => {
   });
   const [creatingFolder, setCreatingFolder] = useState(false);
 
-  // ── Upload state ──────────────────────────────────────────────────────────
+  // ── Upload & Email state ──────────────────────────────────────────────────
   const [uploadProgress, setUploadProgress] = useState<
     { [id: number]: "idle" | "uploading" | "done" | "error" }
   >({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingUploadBatchId, setPendingUploadBatchId] = useState<number | null>(null);
+  
+  // NEW: State for email sending progress
+  const [sendingEmails, setSendingEmails] = useState(false);
 
   // ── Fetch all batches ─────────────────────────────────────────────────────
 
@@ -219,6 +230,41 @@ const CodesManagement = () => {
       toast({ title: "Create Failed", description: msg, variant: "destructive" });
     } finally {
       setCreatingFolder(false);
+    }
+  };
+
+  // ── Bulk Email Handler ────────────────────────────────────────────────────
+  
+  const handleSendBulkEmails = async () => {
+    if (!openBatch) return;
+
+    const soldCount = batchItems.sold.length;
+    if (soldCount === 0) {
+      toast({ 
+        title: "No Customers", 
+        description: "There are no assigned customers in this batch to email.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    // Always ask for confirmation before sending bulk emails
+    if (!window.confirm(`Are you sure you want to send expiration notification emails to ${soldCount} customers?`)) {
+      return;
+    }
+
+    setSendingEmails(true);
+    try {
+      const result = await sendBulkExpirationEmails(openBatch.id);
+      toast({
+        title: "Emails Dispatched",
+        description: `Successfully sent ${result.sent} emails. ${result.failed ? `Failed to send ${result.failed}.` : ""}`,
+      });
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || err?.message || "Failed to send emails.";
+      toast({ title: "Email Dispatch Failed", description: msg, variant: "destructive" });
+    } finally {
+      setSendingEmails(false);
     }
   };
 
@@ -314,7 +360,22 @@ const CodesManagement = () => {
               </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              {/* NEW: Notify Expirations Bulk Email Button */}
+              <Button
+                variant="outline"
+                onClick={handleSendBulkEmails}
+                disabled={sendingEmails || batchItems.sold.length === 0}
+                className="gap-2 border-indigo-700 bg-indigo-950/30 text-indigo-300 hover:bg-indigo-800 hover:text-white h-9"
+              >
+                {sendingEmails ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Mail className="h-4 w-4" />
+                )}
+                {sendingEmails ? "Sending..." : "Notify Expirations"}
+              </Button>
+
               <Button
                 variant="outline"
                 onClick={(e) => triggerUpload(openBatch.id, e)}

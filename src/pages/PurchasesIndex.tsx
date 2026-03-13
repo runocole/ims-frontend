@@ -22,7 +22,6 @@ const PurchaseIndex = () => {
       const token = localStorage.getItem("access") || localStorage.getItem("token");
 
       try {
-        // 🎯 Fetch ALL sales for this specific phone number
         const response = await fetch(`${API_BASE_URL}/sales/?phone=${phone}`, {
           headers: { "Authorization": `Bearer ${token}` }
         });
@@ -44,8 +43,27 @@ const PurchaseIndex = () => {
     fetchAllCustomerSales();
   }, [phone]);
 
-  // Calculate totals across ALL invoices
   const totalValue = sales.reduce((sum, sale) => sum + parseFloat(sale.total_cost || "0"), 0);
+
+  // Helper function to color-code the equipment type badge
+  const getBadgeStyle = (type?: string) => {
+    if (!type) return "bg-slate-700/50 text-slate-300 border-slate-600";
+    
+    const t = type.toLowerCase();
+    if (t.includes("base") && t.includes("rover")) {
+      return "bg-purple-900/50 text-purple-400 border-purple-800";
+    }
+    if (t.includes("base")) {
+      return "bg-blue-900/50 text-blue-400 border-blue-800";
+    }
+    if (t.includes("rover")) {
+      return "bg-teal-900/50 text-teal-400 border-teal-800";
+    }
+    if (t.includes("accessory") || t.includes("accessories")) {
+      return "bg-slate-700/50 text-slate-300 border-slate-600";
+    }
+    return "bg-emerald-900/30 text-emerald-400 border-emerald-800/50";
+  };
 
   return (
     <DashboardLayout>
@@ -88,10 +106,11 @@ const PurchaseIndex = () => {
               {sales.map((sale) => (
                 <div 
                   key={sale.invoice_number}
-                  onClick={() => navigate(`/sales/${phone}/${sale.invoice_number}`)} // 🎯 Routes to the detailed page!
-                  className="bg-slate-900 p-6 rounded-xl border border-slate-800 cursor-pointer hover:border-emerald-500 hover:bg-slate-800/80 transition-all group flex justify-between items-center"
+                  onClick={() => navigate(`/sales/${phone}/${sale.invoice_number}`)} 
+                  className="bg-slate-900 p-6 rounded-xl border border-slate-800 cursor-pointer hover:border-emerald-500 hover:bg-slate-800/80 transition-all group flex flex-col md:flex-row md:justify-between items-start md:items-center gap-6"
                 >
-                  <div className="flex items-center gap-4">
+                  {/* Left: Invoice Num & Date */}
+                  <div className="flex items-center gap-4 md:w-1/4">
                     <div className="bg-slate-800 p-3 rounded-lg group-hover:bg-emerald-500/20 transition-colors">
                       <Receipt className="w-6 h-6 text-blue-400 group-hover:text-emerald-400" />
                     </div>
@@ -100,10 +119,32 @@ const PurchaseIndex = () => {
                       <p className="text-gray-500 text-sm mt-1">Date: {new Date(sale.date_sold || sale.created_at).toLocaleDateString()}</p>
                     </div>
                   </div>
+
+                  {/* Middle: Equipment Items & Badges */}
+                  <div className="flex-1 w-full border-y md:border-y-0 md:border-l border-slate-800 py-4 md:py-0 md:pl-6 flex flex-col gap-3">
+                    {sale.items && sale.items.length > 0 ? (
+                      sale.items.map((item: any, idx: number) => (
+                        <div key={idx} className="flex flex-col sm:flex-row sm:items-center gap-2">
+                          {/* Equipment Name */}
+                          <span className="text-white text-sm font-semibold">
+                            {item.equipment || "Unnamed Equipment"}
+                          </span>
+                          
+                          {/* Colored Type Badge */}
+                          <span className={`w-fit px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${getBadgeStyle(item.equipment_type)}`}>
+                            {item.equipment_type || "Accessory"}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <span className="text-sm text-slate-500 italic">No equipment listed</span>
+                    )}
+                  </div>
                   
-                  <div className="text-right">
+                  {/* Right: Price & Button */}
+                  <div className="text-left md:text-right md:min-w-[150px]">
                     <p className="text-white font-bold text-lg mb-1">₦{parseFloat(sale.total_cost).toLocaleString()}</p>
-                    <Button variant="link" className="text-emerald-500 p-0 h-auto">View Ledger →</Button>
+                    <Button variant="link" className="text-emerald-500 p-0 h-auto group-hover:text-emerald-400">View Ledger →</Button>
                   </div>
                 </div>
               ))}

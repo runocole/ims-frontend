@@ -355,13 +355,13 @@ const CustomersPage = () => {
         </div>
 
         {/* Customer Table */}
-        <Card>
+        <Card className="bg-blue-950">
           <CardHeader>
             <CardTitle>All Customers</CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-slate-900">
                 <TableRow>
                   <TableHead>Customer ID</TableHead>
                   <TableHead>Name</TableHead>
