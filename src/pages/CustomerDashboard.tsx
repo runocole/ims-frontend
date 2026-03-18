@@ -12,23 +12,20 @@ const CustomerDashboard = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState("Customer");
-  
   const [financials, setFinancials] = useState<any>(null); 
   const [equipmentList, setEquipmentList] = useState<any[]>([]);
 
   useEffect(() => {
-    let userEmail = "";
-    let userFullName = "";
-    let userPhone = ""; 
-    
     const userData = localStorage.getItem("user");
+    let userEmail = "";
+    let userPhone = "";
+    
     if (userData) {
       try {
         const parsed = JSON.parse(userData);
         setUserName(parsed.name || "Customer");
-        userFullName = (parsed.name || "").toLowerCase().trim();
         userEmail = (parsed.email || "").toLowerCase().trim();
-        userPhone = (parsed.phone || "").trim(); 
+        userPhone = (parsed.phone || "").trim();
       } catch (e) {}
     }
 
@@ -41,17 +38,13 @@ const CustomerDashboard = () => {
             getReceiverCodes() 
         ]);
 
-        // --- 1. SET UP FINANCIALS ---
-        const myFinancials = financialData?.customers?.find((c: any) => {
-            const matchEmail = c.email && String(c.email).toLowerCase().trim() === userEmail;
-            const matchName = c.name && String(c.name).toLowerCase().trim() === userFullName;
-            const matchPhone = c.phone && String(c.phone).trim() === userPhone;
-            return matchEmail || matchName || matchPhone;
-        });
+        // 1. Setup Financials (Logic remains similar but uses consistent email matching)
+        const myFinancials = financialData?.customers?.find((c: any) => 
+            (c.email && c.email.toLowerCase().trim() === userEmail) || (c.phone && c.phone.trim() === userPhone)
+        );
 
-        const total = myFinancials?.totalSellingPrice || myFinancials?.total_selling_price || 0;
-        const owed = myFinancials?.amountLeft || myFinancials?.amount_left || 0;
-        
+        const total = myFinancials?.totalSellingPrice || 0;
+        const owed = myFinancials?.amountLeft || 0;
         setFinancials({
             totalSellingPrice: total,
             amountLeft: owed,
@@ -59,79 +52,48 @@ const CustomerDashboard = () => {
             progress: total > 0 ? ((total - owed) / total) * 100 : 100
         });
         
-        // --- 2. SET UP SALES & EQUIPMENT ---
-        const availableCodes = codesData?.sold || [];
+        // 2. NEW LOGIC: Match Equipment with Batch-Imported Codes
         const allSales = salesData?.results || salesData || [];
+        const customerSales = allSales.filter((sale: any) => 
+            (sale.email?.toLowerCase().trim() === userEmail) || (sale.phone?.trim() === userPhone)
+        );
 
-        const customerSales = allSales.filter((sale: any) => {
-            const matchName = sale.name && String(sale.name).toLowerCase().trim() === userFullName;
-            const matchPhone = sale.phone && String(sale.phone).trim() === userPhone;
-            return matchName || matchPhone;
-        });
+        // Get all 'sold' items from your new Batches that match this customer's email
+        const myBatchItems = (codesData?.sold || []).filter((item: any) => 
+            item.customer_email?.toLowerCase().trim() === userEmail
+        );
 
         let allEquipment: any[] = [];
 
         customerSales.forEach((sale: any) => {
-            const isFullyPaid = 
-                sale.payment_status?.toLowerCase() === "completed" || 
-                sale.payment_status?.toLowerCase() === "fully-paid" ||
-                owed <= 0;
+            const isFullyPaid = owed <= 0 || sale.payment_status?.toLowerCase() === "completed";
 
-            let itemsArray = [];
-            if (typeof sale.items === 'string') {
-                try { itemsArray = JSON.parse(sale.items); } catch(e) {}
-            } else if (Array.isArray(sale.items)) {
-                itemsArray = sale.items;
-            }
+            let itemsArray = Array.isArray(sale.items) ? sale.items : JSON.parse(sale.items || "[]");
 
             itemsArray.forEach((item: any) => {
-              const rawItemSerial = item.serial_number;
-              let serialsList: string[] = [];
+              const itemSerial = String(item.serial_number || "").toLowerCase().trim();
 
-              // Parse Serial Numbers list (handles stringified arrays or actual arrays)
-              if (Array.isArray(rawItemSerial)) {
-                  serialsList = rawItemSerial.map(s => String(s).trim().toLowerCase());
-              } else if (typeof rawItemSerial === 'string') {
-                  if (rawItemSerial.startsWith('[')) {
-                      try {
-                          serialsList = JSON.parse(rawItemSerial).map((s: any) => String(s).trim().toLowerCase());
-                      } catch (e) {
-                          serialsList = [rawItemSerial.trim().toLowerCase()];
-                      }
-                  } else {
-                      serialsList = [rawItemSerial.trim().toLowerCase()];
-                  }
-              }
+              // Look for this specific serial number in the items assigned to this user in Batches
+              const batchMatch = myBatchItems.find((b: any) => 
+                String(b.serial).toLowerCase().trim() === itemSerial
+              );
 
-              // 🎯 SEARCH FOR ALL CODES MATCHING THE SERIALS IN THIS ITEM
-              const matchingCodes = availableCodes.filter((c: any) => {
-                const codeSerial = String(c.serial || c.receiver_serial || "").trim().toLowerCase();
-                if (!codeSerial) return false;
-                
-                // Returns true if this specific code's serial is anywhere in the equipment's serial list
-                return serialsList.includes(codeSerial) || String(rawItemSerial || "").toLowerCase().includes(codeSerial);
-              });
-
-              // 🎯 JOIN MULTIPLE CODES WITH A SLASH
-              const combinedCodes = matchingCodes.length > 0 
-                ? matchingCodes.map((m: any) => m.current_code).join(" / ") 
-                : null;
-                
               allEquipment.push({
                   invoice: sale.invoice_number || sale.id,
-                  tool_name: item.equipment || item.tool_name || item.name || "Equipment",
+                  tool_name: item.equipment || item.name || "Equipment",
                   serial: item.serial_number,
                   category: item.category || "Tool",
                   is_fully_paid: isFullyPaid,
-                  current_code: combinedCodes // Now displays multiple codes if found
+                  // Only provide the code if the batch match exists AND they have paid
+                  current_code: batchMatch?.current_code || null,
+                  expiry: batchMatch?.code_expiry || null
               });
           });
         });
 
         setEquipmentList(allEquipment);
-
       } catch (error) {
-        console.error("Failed to load dashboard", error);
+        console.error("Dashboard Load Error:", error);
       } finally {
         setLoading(false);
       }

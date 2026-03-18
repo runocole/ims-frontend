@@ -15,12 +15,13 @@ const CustomerPayments = () => {
     const loadPayments = async () => {
       try {
         setLoading(true);
+        // Added safety: If one fails, the other can still load
         const [salesData, financialData] = await Promise.all([
-          getSales(),
-          fetchCustomerOwingData()
+          getSales().catch(() => []),
+          fetchCustomerOwingData().catch(() => null)
         ]);
         
-        setSales(salesData || []);
+        setSales(Array.isArray(salesData) ? salesData : salesData?.results || []);
         setFinancials(financialData);
       } catch (error) {
         console.error("Failed to load payment data", error);
@@ -51,13 +52,15 @@ const CustomerPayments = () => {
           <p className="text-slate-400">Track your part-payments and upload proof of payment.</p>
         </div>
 
-        {/* Global Summary */}
-        {financials && financials.amountLeft > 0 && (
+        {/* Global Summary - Added safe access with ?? 0 */}
+        {financials && (financials?.amountLeft ?? 0) > 0 && (
             <Card className="bg-orange-950/20 border-orange-900/50">
                 <CardContent className="flex items-center justify-between p-6">
                     <div>
                         <p className="text-orange-400 font-medium">Total Outstanding Balance</p>
-                        <h3 className="text-3xl font-bold text-white">₦{financials.amountLeft.toLocaleString()}</h3>
+                        <h3 className="text-3xl font-bold text-white">
+                          ₦{(financials?.amountLeft ?? 0).toLocaleString()}
+                        </h3>
                     </div>
                     <Button className="bg-orange-600 hover:bg-orange-700 text-white">
                         <UploadCloud className="w-4 h-4 mr-2" />
@@ -70,22 +73,23 @@ const CustomerPayments = () => {
         {/* Invoice List */}
         <div className="grid gap-4">
             {sales.map((sale: any, index: number) => {
-                const totalAmount = parseFloat(sale.total_amount) || 0;
-                const amountPaid = parseFloat(sale.amount_paid) || 0;
+                // Use ?? 0 to prevent toLocaleString() from crashing on null
+                const totalAmount = parseFloat(sale?.total_amount || sale?.total_cost) || 0;
+                const amountPaid = parseFloat(sale?.amount_paid || sale?.initial_deposit) || 0;
                 const balance = totalAmount - amountPaid;
-                const isPaid = sale.payment_status === "completed" || balance <= 0;
+                const isPaid = sale?.payment_status?.toLowerCase() === "completed" || balance <= 0;
 
                 return (
-                    <Card key={index} className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
+                    <Card key={sale?.id || index} className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
                         <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between pb-2">
                             <div className="flex items-center space-x-3">
                                 <div className={`p-2 rounded-lg ${isPaid ? 'bg-green-500/10' : 'bg-blue-500/10'}`}>
                                     <FileText className={`w-5 h-5 ${isPaid ? 'text-green-500' : 'text-blue-500'}`} />
                                 </div>
                                 <div>
-                                    <CardTitle className="text-white text-lg">Invoice #{sale.invoice_number}</CardTitle>
+                                    <CardTitle className="text-white text-lg">Invoice #{sale?.invoice_number || 'N/A'}</CardTitle>
                                     <p className="text-sm text-slate-400">
-                                        Date: {new Date(sale.date_sold).toLocaleDateString()}
+                                        Date: {sale?.date_sold ? new Date(sale.date_sold).toLocaleDateString() : "No Date"}
                                     </p>
                                 </div>
                             </div>
@@ -130,7 +134,7 @@ const CustomerPayments = () => {
                 );
             })}
 
-            {sales.length === 0 && (
+            {sales.length === 0 && !loading && (
                 <div className="text-center py-10 text-slate-500 bg-slate-900/30 rounded-lg border border-slate-800 border-dashed">
                     <p>No invoices found.</p>
                 </div>

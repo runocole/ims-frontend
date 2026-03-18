@@ -520,15 +520,21 @@ const CodesManagement = () => {
                             className="border-blue-900/50 hover:bg-blue-900/10 transition-colors"
                           >
                             <TableCell>
-                              <div className="font-bold text-white font-mono text-sm">{item.serial}</div>
-                            </TableCell>
+      <div className="font-bold text-white font-mono text-sm">{item.serial}</div>
+      {/* NEW: Validation Helper for Staff */}
+      {!item.customer_email && (
+        <span className="text-[10px] text-red-400 flex items-center gap-1">
+          <AlertCircle className="h-3 w-3" /> Missing Email
+        </span>
+      )}
+    </TableCell>
 
                             {activeTab === "sold" && (
                               <>
                                 <TableCell>
-                                  <div className="text-sm font-medium text-white">{item.customer_name || "—"}</div>
-                                  <div className="text-[11px] text-blue-400">{item.customer_email}</div>
-                                </TableCell>
+          <div className="text-sm font-medium text-white">{item.customer_name || "—"}</div>
+          <div className="text-[11px] text-blue-400">{item.customer_email}</div>
+        </TableCell>
                                 <TableCell>
                                   <span
                                     className={`text-xs font-medium px-2 py-0.5 rounded-full ${
