@@ -5,13 +5,12 @@ import type { CurrentItem, SaleItem, SaleDetails } from '../types';
 const useSaleForm = () => {
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
   
-  // FIX: Added 'quantity: 1' to the initial state
   const [currentItem, setCurrentItem] = useState<CurrentItem>({
     selectedCategory: "",
     selectedEquipmentType: "",
     selectedTool: null,
     cost: "",
-    quantity: 1 // Must be present to match the Type
+    quantity: 1 
   });
 
   const [saleDetails, setSaleDetails] = useState<SaleDetails>({
@@ -21,7 +20,14 @@ const useSaleForm = () => {
     expiry_date: ""
   });
 
-  const totalCost = saleItems.reduce((sum, item) => sum + parseFloat(item.cost || "0"), 0);
+  // --- NEW: State for Staff Override and Tax ---
+  const [selectedStaff, setSelectedStaff] = useState<string>("");
+  const [applyTax, setApplyTax] = useState<boolean>(false);
+
+  // --- NEW: Calculate Subtotal, Tax, and Total Cost ---
+  const subtotal = saleItems.reduce((sum, item) => sum + parseFloat(item.cost || "0"), 0);
+  const taxAmount = applyTax ? subtotal * 0.075 : 0; // 7.5% tax
+  const totalCost = subtotal + taxAmount;
 
   const addItem = (item: SaleItem) => {
     setSaleItems(prev => [...prev, item]);
@@ -41,7 +47,6 @@ const useSaleForm = () => {
 
   const resetForm = () => {
     setSaleItems([]);
-    // FIX: Added 'quantity: 1' to the reset state
     setCurrentItem({
       selectedCategory: "",
       selectedEquipmentType: "",
@@ -55,17 +60,26 @@ const useSaleForm = () => {
       payment_months: "",
       expiry_date: "",
     });
+    // Reset the new fields
+    setSelectedStaff("");
+    setApplyTax(false);
   };
 
   return {
     saleItems,
     currentItem,
     saleDetails,
-    totalCost,
+    selectedStaff,   // <-- Exported for the API call
+    applyTax,        // <-- Exported for the UI
+    subtotal,        // <-- Exported for the UI
+    taxAmount,       // <-- Exported for the API call
+    totalCost,       // <-- Updated with tax
     addItem,
     removeItem,
     updateCurrentItem,
     updateSaleDetails,
+    setSelectedStaff, // <-- Exported for the UI
+    setApplyTax,      // <-- Exported for the UI
     resetForm
   };
 };

@@ -33,6 +33,10 @@ export interface Sale {
   state: string;
   items: SaleItem[];
   total_cost: string;
+  staff_name?: string;
+  staff?: string | number;
+  sold_by?: string;
+  tax_amount?: string;
   date_sold: string;
   invoice_number?: string;
   import_invoice?: string;

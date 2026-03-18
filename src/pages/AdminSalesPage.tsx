@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom"; // ADDED: For navigation
-import { getSales } from "../services/api";
+import { useNavigate } from "react-router-dom"; 
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
-import { Download, Search, DollarSign, Calendar, FileText, Package, CreditCard, UserSearch } from "lucide-react"; // ADDED: UserSearch for ledger icon
+import { Download, Search, DollarSign, Calendar, FileText, Package, CreditCard, UserSearch } from "lucide-react"; 
 import { DashboardLayout } from "../components/DashboardLayout";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
+import axios from "axios"; // ADDED: Axios for direct API calls
 
 interface SaleItem {
   tool_id: string;
@@ -56,8 +56,10 @@ interface UserProfile {
   email: string;
 }
 
+const API_URL = "http://127.0.0.1:8000/api";
+
 const AdminSalesPage: React.FC = () => {
-  const navigate = useNavigate(); // ADDED: Hook for routing
+  const navigate = useNavigate(); 
 
   const [sales, setSales] = useState<Sale[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -75,6 +77,12 @@ const AdminSalesPage: React.FC = () => {
   }, []);
 
   const getStaffName = (sale: Sale): string => {
+    // 1. FIRST PRIORITY: Use the actual real name sent by Django!
+    if (sale.staff_name && sale.staff_name.trim() !== "") {
+      return sale.staff_name;
+    }
+
+    // 2. BACKUP: If the staff member's name is blank in the database, guess from email
     if (sale.sold_by) {
       const email = sale.sold_by;
       const username = email.split('@')[0];
@@ -84,25 +92,29 @@ const AdminSalesPage: React.FC = () => {
       ).join(' ');
       return friendlyName;
     }
-    if (sale.staff_name && sale.staff_name !== "Unknown Staff") {
-      return sale.staff_name;
-    }
-    if (sale.created_by?.name) {
-      return sale.created_by.name;
-    }
-    if (sale.user?.name) {
-      return sale.user.name;
-    }
+
+    // 3. EXTRA FALLBACKS
+    if (sale.created_by?.name) return sale.created_by.name;
+    if (sale.user?.name) return sale.user.name;
+    
     return currentUser?.name || "Sales Team";
   };
 
-  // Fetch Sales
+  // Fetch Sales (FIXED: Handling DRF Pagination and large page size)
   useEffect(() => {
     const fetchSales = async () => {
       try {
         setLoading(true);
-        const data = await getSales();
-        setSales(Array.isArray(data) ? data : []);
+        const token = localStorage.getItem("access") || localStorage.getItem("token");
+        
+        // Request a large page size so the Admin sees everything for accurate client-side stats
+        const response = await axios.get(`${API_URL}/sales/?page_size=1000`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        // Safely extract the data whether it's paginated (.results) or raw
+        const salesData = response.data.results || response.data;
+        setSales(Array.isArray(salesData) ? salesData : []);
       } catch (error) {
         console.error("Failed to load sales:", error);
       } finally {
@@ -170,7 +182,6 @@ const AdminSalesPage: React.FC = () => {
     setSortOrder(order);
   };
 
-  // ADDED: Reused the View Invoice logic from your main Sales Table
   const handleViewInvoice = (sale: Sale) => {
     localStorage.setItem("currentInvoice", JSON.stringify(sale));
     navigate(`/invoice/${sale.invoice_number || sale.id}`);
@@ -233,7 +244,7 @@ const AdminSalesPage: React.FC = () => {
   const getStatusColor = (status: string) => {
     switch (status?.toLowerCase()) {
       case 'completed': return 'bg-green-900/50 text-green-300 border-green-700';
-      case 'ongoing': return 'bg-cyan-900/50 text-cyan-300 border-cyan-700'; // ADDED ONGOING COLOR
+      case 'ongoing': return 'bg-cyan-900/50 text-cyan-300 border-cyan-700'; 
       case 'pending': return 'bg-yellow-900/50 text-yellow-300 border-yellow-700';
       case 'installment': return 'bg-blue-900/50 text-blue-300 border-blue-700';
       case 'failed': return 'bg-red-900/50 text-red-300 border-red-700';
@@ -406,7 +417,7 @@ const AdminSalesPage: React.FC = () => {
                         { key: "date_sold", label: "Date Sold" },
                         { key: "staff_name", label: "Sold By" },
                         { key: "invoice_number", label: "Invoice" },
-                        { key: "actions", label: "Actions" } // ADDED ACTIONS HEADER
+                        { key: "actions", label: "Actions" }
                       ].map(({ key, label }) => (
                         <th
                           key={key}
@@ -490,7 +501,6 @@ const AdminSalesPage: React.FC = () => {
                           {sale.invoice_number || "-"}
                         </td>
 
-                        {/* ADDED: ACTIONS COLUMN DATA */}
                         <td className="p-3">
                           <div className="flex items-center gap-1">
                             <Button 

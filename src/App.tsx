@@ -39,6 +39,7 @@ import MobileNavigation from "./components/MobileNavigation";
 import CodesManagement from "./pages/CodesManagement"; 
 import PurchasesPage from "./pages/PurchasesPage";
 import PurchasesIndex from "./pages/PurchasesIndex";
+import StaffProfileView from "./pages/StaffProfileView";
 
 
 const queryClient = new QueryClient();
@@ -174,6 +175,10 @@ const App = () => (
                 path="/admin/sales"
                 element={<PrivateRoute element={<AdminSalesPage />} allowedRoles={["admin"]} />}
               />
+              {/* <Route
+                path="/staff/profile/:staffId"
+                element={<PrivateRoute element={<StaffProfileView />} allowedRoles={["admin"]} />}
+              /> */}
 
               {/* --- Customer Routes --- */}
               <Route
@@ -184,6 +189,7 @@ const App = () => (
                 path="/customer/payments" 
                 element={<PrivateRoute element={<CustomerPayments />} allowedRoles={["customer"]} />} 
               />
+              
               
               {/* --- Public Website Routes --- */}
               <Route path="/about" element={<About />} />

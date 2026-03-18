@@ -31,7 +31,14 @@ const PurchaseIndex = () => {
         const data = await response.json();
         const actualSales = Array.isArray(data) ? data : (data.results || []);
         
-        setSales(actualSales);
+        // --- NEW: STRICT FRONTEND FILTER ---
+        // If the backend ignores the ?phone query and sends everything, 
+        // we manually filter out any invoice that doesn't match the phone number.
+       const customerSpecificSales = actualSales.filter(
+          (sale: any) => sale.phone === phone
+        );
+        
+        setSales(customerSpecificSales);
       } catch (error) {
         console.error(error);
         toast.error("Could not load customer history.");

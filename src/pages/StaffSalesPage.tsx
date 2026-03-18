@@ -1,280 +1,141 @@
 import { useEffect, useState } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, FileText, Search, Eye, Edit } from "lucide-react";
+import { ArrowLeft, FileText, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "../components/ui/button";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "../components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
 import { DashboardLayout } from "../components/DashboardLayout";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import axios from "axios";
-
-interface Sale {
-  id: number;
-  customer_id?: number;
-  name: string;
-  phone: string;
-  state: string;
-  items: any[];
-  total_cost: string;
-  date_sold: string;
-  invoice_number?: string;
-  payment_plan?: string;
-  expiry_date?: string;
-  payment_status?: string;
-  staff_id?: string;
-}
 
 const API_URL = "http://localhost:8000/api";
 
 export default function StaffSalesPage() {
-  const { staffId } = useParams<{ staffId: string }>();
+  // ✅ This grabs ALL params from the URL
+  const params = useParams(); 
+  
+  // ✅ This finds the FIRST value in the params object (which will be "15")
+  const id = Object.values(params)[0]; 
+
   const location = useLocation();
   const navigate = useNavigate();
-  const [sales, setSales] = useState<Sale[]>([]);
+  const [sales, setSales] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [staffName, setStaffName] = useState("");
-
-  const token = localStorage.getItem("access");
-  const axiosConfig = {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  };
+  const [error, setError] = useState<string | null>(null);
+  const [staffName, setStaffName] = useState(location.state?.staffName || "Staff Member");
 
   useEffect(() => {
     const fetchStaffSales = async () => {
+      // ... (rest of your fetch logic using 'id')
+      const token = localStorage.getItem("access") || localStorage.getItem("token");
+      
+      if (!id) {
+        setError("No Staff ID found in URL");
+        setLoading(false);
+        return;
+      }
+
       try {
-        // Get staff name from navigation state or fetch from API
-        if (location.state?.staffName) {
-          setStaffName(location.state.staffName);
-        } else if (staffId) {
-          // Fetch staff details from API
-          const staffRes = await axios.get(`${API_URL}/staff/${staffId}`, axiosConfig);
-          setStaffName(staffRes.data.name);
+        setLoading(true);
+        setError(null);
+
+        // 1. Try to fetch staff details if name is missing (on refresh)
+        if (!location.state?.staffName) {
+          try {
+            const staffRes = await axios.get(`${API_URL}staff/${id}/`, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            setStaffName(staffRes.data.name);
+          } catch (e) { console.log("Staff name fetch failed, using default."); }
         }
 
-        // Fetch sales for this staff member
-        const salesRes = await axios.get(`${API_URL}/sales/?staff_id=${staffId}`, axiosConfig);
-        setSales(salesRes.data);
-      } catch (error) {
-        console.error("Error fetching staff sales:", error);
+        // 2. Fetch Sales - Using the exact param your Django backend expects
+        // Usually, Django filters use 'staff' or 'staff_id'
+        const salesRes = await axios.get(`${API_URL}/sales/`, {
+          params: { staff_id: id }, 
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        console.log("Data from API:", salesRes.data);
+
+        // ✅ FIX: Handle DRF Pagination (results) vs Direct Array
+        const data = salesRes.data?.results || (Array.isArray(salesRes.data) ? salesRes.data : []);
+        setSales(data);
+
+      } catch (err: any) {
+        console.error("Fetch Error:", err);
+        setError(err.response?.data?.detail || "Could not connect to the server.");
       } finally {
         setLoading(false);
       }
     };
 
-    if (staffId) {
-      fetchStaffSales();
-    }
-  }, [staffId, location.state]);
+    fetchStaffSales();
+  }, [id]);
 
-  const exportPDF = () => {
-    const doc = new jsPDF();
-    doc.text(`Sales Records - ${staffName}`, 14, 15);
-    autoTable(doc, {
-      startY: 25,
-      head: [
-        [
-          "Client",
-          "Phone", 
-          "State",
-          "Items",
-          "Price",
-          "Date Sold",
-          "Invoice",
-          "Payment Plan",
-          "Expiry",
-          "Status",
-        ],
-      ],
-      body: sales.map((s) => [
-        s.name,
-        s.phone,
-        s.state,
-        s.items.map(item => item.equipment).join(', '),
-        `₦${s.total_cost}`,
-        s.date_sold,
-        s.invoice_number || "-",
-        s.payment_plan || "-",
-        s.expiry_date || "-",
-        s.payment_status || "-",
-      ]),
-      styles: { fontSize: 8 },
-    });
-    doc.save(`${staffName}_sales_records.pdf`);
-  };
-
-  const totalSales = sales.reduce((sum, sale) => sum + parseFloat(sale.total_cost), 0);
+  // Safe calculation
+  const totalRevenue = sales.reduce((sum, s) => sum + (parseFloat(s.total_cost || s.total_amount) || 0), 0);
 
   return (
     <DashboardLayout>
-      <div className="p-6 space-y-6">
-        {/* Header */}
+      <div className="p-6 space-y-6 bg-slate-950 min-h-screen text-white">
         <div className="flex items-center gap-4">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate(-1)}
-            className="flex items-center gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-white">
-              {staffName}'s Sales
-            </h1>
-            <p className="text-muted-foreground">
-              Sales records and performance overview
-            </p>
+          <Button variant="ghost" onClick={() => navigate(-1)}><ArrowLeft /> Back</Button>
+          <h1 className="text-2xl font-bold">{staffName}'s Sales Records</h1>
+        </div>
+
+        {loading ? (
+          <div className="flex flex-col items-center justify-center h-64 space-y-4">
+            <Loader2 className="h-10 w-10 animate-spin text-blue-500" />
+            <p className="text-slate-400">Fetching records from database...</p>
           </div>
-        </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center h-64 border border-red-900 bg-red-950/20 rounded-lg">
+            <AlertCircle className="h-10 w-10 text-red-500 mb-2" />
+            <p className="text-red-200">{error}</p>
+            <Button className="mt-4" onClick={() => window.location.reload()}>Retry</Button>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Stats Row */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+               <Card className="bg-slate-900 border-slate-800"><CardContent className="p-6">
+                  <p className="text-slate-400 text-sm">Total Revenue</p>
+                  <p className="text-3xl font-bold">₦{totalRevenue.toLocaleString()}</p>
+               </CardContent></Card>
+               <Card className="bg-slate-900 border-slate-800"><CardContent className="p-6">
+                  <p className="text-slate-400 text-sm">Sales Count</p>
+                  <p className="text-3xl font-bold">{sales.length}</p>
+               </CardContent></Card>
+            </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="bg-slate-800 border-slate-700">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-400">
-                Total Sales
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-white">
-                ₦{totalSales.toLocaleString()}
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-slate-800 border-slate-700">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-400">
-                Number of Sales
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-white">
-                {sales.length}
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-slate-800 border-slate-700">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-400">
-                Average Sale Value
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-white">
-                ₦{sales.length > 0 ? (totalSales / sales.length).toLocaleString(undefined, { maximumFractionDigits: 2 }) : 0}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Actions */}
-        <div className="flex justify-end">
-          <Button
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-            onClick={exportPDF}
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            Export PDF
-          </Button>
-        </div>
-
-        {/* Sales Table */}
-        <Card className="bg-slate-900 border-slate-700">
-          <CardHeader>
-            <CardTitle className="text-white">Sales Records</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <p className="text-gray-400 text-center py-4">Loading...</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="text-left border-b border-slate-700 bg-slate-800">
-                      {[
-                        "Client",
-                        "Phone",
-                        "State", 
-                        "Items",
-                        "Total Cost",
-                        "Date Sold",
-                        "Invoice",
-                        "Payment Plan",
-                        "Expiry",
-                        "Status",
-                      ].map((col) => (
-                        <th key={col} className="p-3 text-white font-medium">
-                          {col}
-                        </th>
-                      ))}
+            {/* Table */}
+            <Card className="bg-slate-900 border-slate-800">
+              <CardContent className="p-0">
+                <table className="w-full text-sm">
+                  <thead className="border-b border-slate-800 text-slate-400">
+                    <tr>
+                      <th className="p-4 text-left">Customer</th>
+                      <th className="p-4 text-left">Invoice</th>
+                      <th className="p-4 text-right">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
                     {sales.length === 0 ? (
-                      <tr>
-                        <td colSpan={10} className="text-center p-4 text-gray-400">
-                          No sales records found for this staff member.
-                        </td>
-                      </tr>
+                      <tr><td colSpan={3} className="p-10 text-center text-slate-500">No sales found for this user.</td></tr>
                     ) : (
                       sales.map((sale) => (
-                        <tr 
-                          key={sale.id} 
-                          className="border-b border-slate-700 hover:bg-slate-800/50 transition-colors text-gray-300"
-                        >
-                          <td className="p-3 text-white">{sale.name}</td>
-                          <td className="p-3">{sale.phone}</td>
-                          <td className="p-3">{sale.state}</td>
-                          <td className="p-3">
-                            <div className="max-w-xs">
-                              {sale.items?.map((item, index) => (
-                                <div key={index} className="text-xs mb-1 text-gray-300">
-                                  • {item.equipment}
-                                </div>
-                              )) || "No items"}
-                            </div>
-                          </td>
-                          <td className="p-3 font-semibold text-white">
-                            ₦{parseFloat(sale.total_cost).toLocaleString()}
-                          </td>
-                          <td className="p-3">
-                            {sale.date_sold ? sale.date_sold.split('T')[0] : "-"}
-                          </td>
-                          <td className="p-3 text-blue-300">{sale.invoice_number || "-"}</td>
-                          <td className="p-3">{sale.payment_plan || "-"}</td>
-                          <td className="p-3">{sale.expiry_date || "-"}</td>
-                          <td className="p-3">
-                            <span
-                              className={`px-3 py-1 rounded-full text-xs font-medium ${
-                                sale.payment_status === "completed"
-                                  ? "bg-green-900/50 text-green-300 border border-green-700"
-                                  : sale.payment_status === "installment"
-                                  ? "bg-blue-900/50 text-blue-300 border border-blue-700"
-                                  : sale.payment_status === "failed"
-                                  ? "bg-red-900/50 text-red-300 border border-red-700"
-                                  : "bg-gray-900/50 text-gray-300 border border-gray-700"
-                              }`}
-                            >
-                              {sale.payment_status || "pending"}
-                            </span>
-                          </td>
+                        <tr key={sale.id} className="border-b border-slate-800 hover:bg-slate-800/50">
+                          <td className="p-4 font-medium">{sale.name}</td>
+                          <td className="p-4 text-slate-400">{sale.invoice_number || "N/A"}</td>
+                          <td className="p-4 text-right font-bold text-green-400">₦{parseFloat(sale.total_cost).toLocaleString()}</td>
                         </tr>
                       ))
                     )}
                   </tbody>
                 </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

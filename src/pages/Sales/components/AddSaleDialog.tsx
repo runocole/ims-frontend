@@ -13,6 +13,12 @@ import { SaleItemsList } from "./SaleItemsList";
 import { PaymentDetails } from "./PaymentDetails";
 import type { Customer, CurrentItem, GroupedTool, SaleItem, SaleDetails } from "../types";
 
+export interface StaffMember {
+  id: number | string;
+  name: string;
+  email: string;
+}
+
 interface AddSaleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -22,7 +28,17 @@ interface AddSaleDialogProps {
   filteredGroupedTools: GroupedTool[];
   saleItems: SaleItem[];
   saleDetails: SaleDetails;
+  
+  subtotal: number;
+  taxAmount: number;
   totalCost: number;
+  applyTax: boolean;
+  onTaxChange: (apply: boolean) => void;
+
+  staffList?: StaffMember[]; 
+  selectedStaff: string;
+  onStaffChange: (staffId: string) => void;
+
   isSubmitting: boolean;
   onCategoryChange: (category: string) => void;
   onEquipmentTypeChange: (type: string) => void;
@@ -49,7 +65,14 @@ export const AddSaleDialog = ({
   filteredGroupedTools,
   saleItems,
   saleDetails,
+  subtotal,
+  taxAmount,
   totalCost,
+  applyTax,
+  onTaxChange,
+  staffList = [], // Now using the real list from backend props
+  selectedStaff,
+  onStaffChange,
   isSubmitting,
   onCategoryChange,
   onEquipmentTypeChange,
@@ -67,7 +90,6 @@ export const AddSaleDialog = ({
   onCancel
 }: AddSaleDialogProps) => {
 
-  // We disable the "Add to Sale" button if fields are missing OR if it's currently adding items
   const isAddDisabled = !currentItem.selectedTool || !currentItem.cost || isSubmitting;
 
   return (
@@ -77,11 +99,47 @@ export const AddSaleDialog = ({
           <DialogTitle className="text-white">Add New Sale</DialogTitle>
         </DialogHeader>
 
-        {/* Displays Selected Customer details */}
         <CustomerInfo customer={selectedCustomer} />
 
         <div className="space-y-6 py-3">
-          {/* Equipment selection and Quantity input */}
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-800 p-4 rounded-lg border border-slate-700">
+            {/* Staff Selector - Uses Real Backend Data */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-1">
+                Sold By (Staff Override)
+              </label>
+              <select 
+                className="w-full bg-slate-900 border border-slate-700 rounded-md p-2 text-white focus:outline-none focus:border-blue-500"
+                value={selectedStaff}
+                onChange={(e) => onStaffChange(e.target.value)}
+                disabled={isSubmitting}
+              >
+                <option value="">-- Default (Logged In User) --</option>
+                {staffList.map((staff) => (
+                  <option key={staff.id} value={staff.id}>
+                    {staff.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Tax Toggle */}
+            <div className="flex items-center space-x-3 pt-1 md:pt-6">
+              <input 
+                type="checkbox" 
+                id="tax-toggle"
+                className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-slate-900"
+                checked={applyTax}
+                onChange={(e) => onTaxChange(e.target.checked)}
+                disabled={isSubmitting}
+              />
+              <label htmlFor="tax-toggle" className="text-sm font-medium text-slate-300 cursor-pointer">
+                Apply 7.5% Tax
+              </label>
+            </div>
+          </div>
+
           <EquipmentSelector
             currentItem={currentItem}
             groupedTools={groupedTools}
@@ -94,14 +152,18 @@ export const AddSaleDialog = ({
             isAddDisabled={isAddDisabled}
           />
 
-          {/* Table showing items already added to the sale */}
+          {applyTax && saleItems.length > 0 && (
+             <div className="text-right text-sm text-slate-400">
+               Subtotal: ₦{subtotal.toLocaleString()} | Tax (7.5%): ₦{taxAmount.toLocaleString()}
+             </div>
+          )}
+
           <SaleItemsList
             items={saleItems}
             totalCost={totalCost}
             onRemoveItem={onRemoveItem}
           />
 
-          {/* Payment plan logic */}
           <PaymentDetails
             saleDetails={saleDetails}
             totalCost={totalCost}

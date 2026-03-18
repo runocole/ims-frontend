@@ -45,7 +45,12 @@ const useSalesData = () => {
   };
 
   const addSale = (newSale: Sale) => {
-    setSales(prev => [newSale, ...prev]);
+    setSales((prev: any) => {
+      const prevArray = Array.isArray(prev) ? prev : (prev?.results ? prev.results : []);
+      // NOTE: If your new sale variable is named something other than 'newSale' 
+      // (like 'data', 'response.data', or 'sale'), change it in the line below!
+      return [newSale, ...prevArray]; 
+    });
   };
 
   const updateSaleStatus = (saleId: number, status: string) => {

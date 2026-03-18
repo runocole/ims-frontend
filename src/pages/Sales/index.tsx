@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { FileText } from "lucide-react";
 import { Button } from "../../components/ui/button";
-// Updated path to match your structure
 import { DashboardLayout } from "../../components/DashboardLayout";
 import { useNavigate } from "react-router-dom"; 
 import jsPDF from "jspdf";
@@ -27,6 +26,7 @@ import { useToolAssignment } from "./hooks/useToolAssignment";
 
 // Utils
 import { api } from "./utils/api";
+import axios from "axios"; 
 
 export default function SalesPage() {
   const navigate = useNavigate();
@@ -48,13 +48,20 @@ export default function SalesPage() {
     soldSerials: []
   });
 
+  // --- Staff state for dropdown ---
+  const [staffList, setStaffList] = useState<any[]>([]);
+
+  // --- NEW: Handle Tax & Staff locally ---
+  const [applyTax, setApplyTax] = useState(false);
+  const [selectedStaff, setSelectedStaff] = useState<string | number>("");
+
   const {
-    sales,
+    sales, 
     customers,
     tools,
     groupedTools,
     setGroupedTools,
-    loading,
+    loading: hookLoading,
     fetchGroupedTools,
     addSale,
     updateSaleStatus
@@ -64,7 +71,6 @@ export default function SalesPage() {
     saleItems,
     currentItem,
     saleDetails,
-    totalCost,
     addItem,
     removeItem,
     updateCurrentItem,
@@ -72,8 +78,73 @@ export default function SalesPage() {
     resetForm
   } = useSaleForm();
 
+  // --- NEW: Automatically calculate totals based on the items in the cart ---
+  const subtotal = saleItems.reduce((sum, item) => sum + parseFloat(item.cost || "0"), 0);
+  const taxAmount = applyTax ? subtotal * 0.075 : 0;
+  const totalCost = subtotal + taxAmount;
+
   const { assignRandomTool } = useToolAssignment();
   const [displayedAssignment, setDisplayedAssignment] = useState<any>(null);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [serverSales, setServerSales] = useState<Sale[]>([]);
+  const [isTableLoading, setIsTableLoading] = useState(true);
+
+  // Fetch Staff List for Dropdown
+  useEffect(() => {
+    const fetchStaff = async () => {
+      try {
+        const token = localStorage.getItem("access") || localStorage.getItem("token");
+        const API_URL = "http://127.0.0.1:8000/api";
+        const res = await axios.get(`${API_URL}/auth/staff/`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setStaffList(res.data.results || res.data || []);
+      } catch (error) {
+        console.error("Failed to load staff members:", error);
+      }
+    };
+    fetchStaff();
+  }, []);
+
+  const fetchPaginatedSales = useCallback(async () => {
+    setIsTableLoading(true);
+    try {
+      const token = localStorage.getItem("access") || localStorage.getItem("token"); 
+      const API_URL = "http://127.0.0.1:8000/api";
+
+      const res = await axios.get(`${API_URL}/sales/`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: {
+          page: currentPage,
+          start_date: startDate,
+          end_date: endDate
+        }
+      });
+      
+      setServerSales(res.data.results || res.data);
+      if (res.data.count !== undefined) {
+        setTotalItems(res.data.count);
+        setTotalPages(Math.ceil(res.data.count / 10)); 
+      }
+    } catch (err) {
+      console.error("Failed to fetch paginated sales:", err);
+      toast.error("Failed to load sales data.");
+    } finally {
+      setIsTableLoading(false);
+    }
+  }, [currentPage, startDate, endDate]);
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      fetchPaginatedSales();
+    }, 300);
+    return () => clearTimeout(delayDebounceFn);
+  }, [fetchPaginatedSales]);
 
   useEffect(() => {
     let isMounted = true;
@@ -170,55 +241,65 @@ export default function SalesPage() {
         phone: selectedCustomer.phone,
         state: selectedCustomer.state,
         items: saleItems,
-        total_cost: totalCost.toString(),
+        
+        // --- NEW: Add Tax and Staff to payload safely ---
+        staff: selectedStaff ? Number(selectedStaff) : null,
+        tax_amount: String(taxAmount), 
+        total_cost: String(totalCost),
+        
         payment_plan: saleDetails.payment_plan,
         initial_deposit: saleDetails.initial_deposit || null,
         payment_months: saleDetails.payment_months || null,
         expiry_date: saleDetails.expiry_date || null,
         date_sold: new Date().toISOString().split('T')[0],
-        payment_status: "pending",
+        
+        payment_status: (saleDetails.payment_plan?.toLowerCase() === "installment" || parseFloat(saleDetails.initial_deposit || "0") > 0) 
+                  ? "ongoing" 
+                  : "pending",
       };
 
       const res = await api.createSale(payload);
-      addSale(res.data);
+      addSale(res.data); 
 
       if (action === "send") {
-  const generatedSale = res.data as Sale; // Cast to your updated Sale type
+        const generatedSale = res.data as Sale; 
 
-  const invoiceData = {
-    // 1. Safely check for invoice_no
-    // 2. Safely convert ID to string before slicing
-    invoiceNo: generatedSale.invoice_no || `INV-${String(generatedSale.id).slice(0, 5)}`,
-    
-    date: new Date().toLocaleDateString('en-GB', { 
-      day: '2-digit', 
-      month: 'short', 
-      year: 'numeric' 
-    }),
-    customer: {
-      name: selectedCustomer.name,
-      address: `${selectedCustomer.state}, Nigeria`,
-    },
-    items: saleItems.map(item => ({
-      description: item.equipment,
-      qty: 1,
-      rate: parseFloat(item.cost),
-      discount: 0
-    })),
-    paymentMade: parseFloat(saleDetails.initial_deposit || "0")
-  };
+        const invoiceData = {
+          invoiceNo: generatedSale.invoice_no || `INV-${String(generatedSale.id).slice(0, 5)}`,
+          date: new Date().toLocaleDateString('en-GB', { 
+            day: '2-digit', 
+            month: 'short', 
+            year: 'numeric' 
+          }),
+          customer: {
+            name: selectedCustomer.name,
+            address: `${selectedCustomer.state}, Nigeria`,
+          },
+          items: saleItems.map(item => ({
+            description: item.equipment,
+            qty: 1,
+            rate: parseFloat(item.cost),
+            discount: 0
+          })),
+          taxAmount: taxAmount, 
+          paymentMade: parseFloat(saleDetails.initial_deposit || "0")
+        };
 
-  localStorage.setItem("last_generated_invoice", JSON.stringify(invoiceData));
-  toast.success("Sale Recorded! Generating Invoice...");
-  
-  setTimeout(() => {
-    navigate(`/invoice/${generatedSale.id}`);
-  }, 1000);
-} else {
+        localStorage.setItem("last_generated_invoice", JSON.stringify(invoiceData));
+        toast.success("Sale Recorded! Generating Invoice...");
+        
+        setTimeout(() => {
+          navigate(`/invoice/${generatedSale.id}`);
+        }, 1000);
+      } else {
         toast.success("Sale saved as draft!");
+        fetchPaginatedSales(); 
       }
 
+      // --- NEW: Reset all states including staff and tax after success ---
       resetForm();
+      setApplyTax(false);
+      setSelectedStaff("");
       setSelectedCustomer(null);
       setOpen(false);
     } catch (error) {
@@ -286,7 +367,16 @@ export default function SalesPage() {
           groupedTools={groupedTools}
           saleItems={saleItems}
           saleDetails={saleDetails}
+          
+          subtotal={subtotal}
+          taxAmount={taxAmount}
           totalCost={totalCost}
+          applyTax={applyTax}
+          onTaxChange={setApplyTax}
+          staffList={staffList}
+          selectedStaff={selectedStaff as string}
+          onStaffChange={setSelectedStaff}
+
           isSubmitting={isSubmitting}
           onCategoryChange={handleCategorySelect}
           onEquipmentTypeChange={handleEquipmentTypeSelect}
@@ -302,13 +392,32 @@ export default function SalesPage() {
           onExpiryDateChange={(v) => updateSaleDetails({ expiry_date: v })}
           onSaveDraft={() => handleSaveSale("draft")}
           onSaveAndSend={() => handleSaveSale("send")}
-          onCancel={() => { resetForm(); setSelectedCustomer(null); setOpen(false); }}
+          onCancel={() => { 
+            resetForm(); 
+            setApplyTax(false);
+            setSelectedStaff("");
+            setSelectedCustomer(null); 
+            setOpen(false); 
+          }}
         />
 
         <SalesTable
-          sales={sales}
+          sales={serverSales} 
           tools={tools}
-          loading={loading}
+          loading={hookLoading || isTableLoading}
+          
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          onPageChange={(page) => setCurrentPage(page)}
+          filterStartDate={startDate}
+          filterEndDate={endDate}
+          onDateChange={(start, end) => {
+            setStartDate(start);
+            setEndDate(end);
+            setCurrentPage(1); 
+          }}
+
           onEditStatus={(sale) => {
             setEditingSale(sale);
             setNewPaymentStatus(sale.payment_status || "pending");
@@ -326,7 +435,6 @@ export default function SalesPage() {
           }}
         />
 
-        {/* Keeping existing modals for status and serials */}
         <EditStatusDialog
           open={editStatusOpen}
           onOpenChange={setEditStatusOpen}
@@ -338,7 +446,8 @@ export default function SalesPage() {
             setIsUpdatingStatus(true);
             try {
               await api.updateSaleStatus(editingSale.id, newPaymentStatus);
-              updateSaleStatus(editingSale.id, newPaymentStatus);
+              updateSaleStatus(editingSale.id, newPaymentStatus); 
+              fetchPaginatedSales(); 
               setEditStatusOpen(false);
               toast.success("Payment status updated");
             } catch {
