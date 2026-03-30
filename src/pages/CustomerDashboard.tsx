@@ -19,11 +19,13 @@ const CustomerDashboard = () => {
     const userData = localStorage.getItem("user");
     let userEmail = "";
     let userPhone = "";
+    let parsedName = "";
     
     if (userData) {
       try {
         const parsed = JSON.parse(userData);
-        setUserName(parsed.name || "Customer");
+        parsedName = parsed.name || "";
+        setUserName(parsedName || "Customer");
         userEmail = (parsed.email || "").toLowerCase().trim();
         userPhone = (parsed.phone || "").trim();
       } catch (e) {}
@@ -38,9 +40,11 @@ const CustomerDashboard = () => {
             getReceiverCodes() 
         ]);
 
-        // 1. Setup Financials (Logic remains similar but uses consistent email matching)
+        // 1. Setup Financials - Broader matching logic
         const myFinancials = financialData?.customers?.find((c: any) => 
-            (c.email && c.email.toLowerCase().trim() === userEmail) || (c.phone && c.phone.trim() === userPhone)
+            (userEmail && c.email?.toLowerCase().trim() === userEmail) || 
+            (userPhone && c.phone?.trim() === userPhone) ||
+            (parsedName && c.name?.toLowerCase().trim() === parsedName.toLowerCase().trim())
         );
 
         const total = myFinancials?.totalSellingPrice || 0;
@@ -52,46 +56,104 @@ const CustomerDashboard = () => {
             progress: total > 0 ? ((total - owed) / total) * 100 : 100
         });
         
-        // 2. NEW LOGIC: Match Equipment with Batch-Imported Codes
+        // 2. Match Equipment with Batch-Imported Codes
         const allSales = salesData?.results || salesData || [];
-        const customerSales = allSales.filter((sale: any) => 
-            (sale.email?.toLowerCase().trim() === userEmail) || (sale.phone?.trim() === userPhone)
-        );
-
-        // Get all 'sold' items from your new Batches that match this customer's email
-        const myBatchItems = (codesData?.sold || []).filter((item: any) => 
-            item.customer_email?.toLowerCase().trim() === userEmail
-        );
-
-        let allEquipment: any[] = [];
-
-        customerSales.forEach((sale: any) => {
-            const isFullyPaid = owed <= 0 || sale.payment_status?.toLowerCase() === "completed";
-
-            let itemsArray = Array.isArray(sale.items) ? sale.items : JSON.parse(sale.items || "[]");
-
-            itemsArray.forEach((item: any) => {
-              const itemSerial = String(item.serial_number || "").toLowerCase().trim();
-
-              // Look for this specific serial number in the items assigned to this user in Batches
-              const batchMatch = myBatchItems.find((b: any) => 
-                String(b.serial).toLowerCase().trim() === itemSerial
-              );
-
-              allEquipment.push({
-                  invoice: sale.invoice_number || sale.id,
-                  tool_name: item.equipment || item.name || "Equipment",
-                  serial: item.serial_number,
-                  category: item.category || "Tool",
-                  is_fully_paid: isFullyPaid,
-                  // Only provide the code if the batch match exists AND they have paid
-                  current_code: batchMatch?.current_code || null,
-                  expiry: batchMatch?.code_expiry || null
-              });
-          });
+        
+        // Smarter matching: Check Email OR Phone OR Name
+        const customerSales = allSales.filter((sale: any) => {
+            const matchEmail = userEmail && sale.email?.toLowerCase().trim() === userEmail;
+            const matchPhone = userPhone && sale.phone?.trim() === userPhone;
+            const matchName = parsedName && sale.name?.toLowerCase().trim() === parsedName.toLowerCase().trim();
+            return matchEmail || matchPhone || matchName;
         });
 
+        const myBatchItems = codesData?.sold || [];
+        let allEquipment: any[] = [];
+
+        // 🔥 NEW: Aggressive string cleaner to ensure serials match perfectly
+        const cleanString = (s: any) => String(s || "").replace(/[\[\]\s"']/g, '').toLowerCase();
+
+        // Loop through the customer's sales
+        customerSales.forEach((sale: any) => {
+            let itemsArray = Array.isArray(sale.items) ? sale.items : JSON.parse(sale.items || "[]");
+            const saleInvoice = cleanString(sale.invoice_number || sale.id);
+
+            itemsArray.forEach((item: any) => {
+                // 1. Extract and clean the item's serial numbers
+                let itemSerials: string[] = [];
+                if (typeof item.serial_number === 'string' && item.serial_number.includes('[')) {
+                    try {
+                        itemSerials = JSON.parse(item.serial_number).map(cleanString);
+                    } catch {
+                        itemSerials = [cleanString(item.serial_number)];
+                    }
+                } else {
+                    itemSerials = [cleanString(item.serial_number)];
+                }
+
+                // 2. 🔥 STRICT MATCHING: Find this item in the Code Management Batch Data
+                const matchedBatchItem = myBatchItems.find((b: any) => {
+                    const batchSerial = cleanString(b.serial);
+                    const batchInvoice = cleanString(b.invoice);
+                    
+                    // Match by Serial Number OR exact Invoice match to be 100% safe
+                    return itemSerials.includes(batchSerial) || (batchInvoice === saleInvoice && batchInvoice !== "");
+                });
+
+                // 3. APPLY STRICT BATCH STATUS
+                let paymentStatus = "paid"; 
+                let rawCode = null;
+                let expiryDate = null;
+
+                if (matchedBatchItem) {
+                    // 👉 If it exists in Code Management, strictly use exactly what that page says!
+                    paymentStatus = String(matchedBatchItem.payment_status || "paid").toLowerCase().trim();
+                    rawCode = matchedBatchItem.current_code;
+                    expiryDate = matchedBatchItem.duration || matchedBatchItem.expiry || null; 
+                } else {
+                    // Fallback only if the code hasn't been generated in the batch page yet
+                    paymentStatus = String(sale.payment_status || "paid").toLowerCase().trim();
+                }
+
+                const isOverdue = paymentStatus === "overdue";
+
+                allEquipment.push({
+                    invoice: sale.invoice_number || sale.id,
+                    tool_name: item.equipment || item.name || "Equipment",
+                    serial: item.serial_number, 
+                    category: item.category || "Tool",
+                    payment_status: isOverdue ? "overdue" : "paid",
+                    is_overdue: isOverdue,
+                    is_fully_paid: !isOverdue, 
+                    current_code: isOverdue ? null : rawCode, // Hide code if overdue!
+                    expiry: expiryDate
+                });
+            });
+        });
+
+        // 4. Fallback for codes generated outside of explicit sales records
+        if (allEquipment.length === 0 && myBatchItems.length > 0) {
+            allEquipment = myBatchItems
+                .filter((b: any) => cleanString(b.customer_name) === cleanString(parsedName))
+                .map((item: any) => {
+                    const isOverdue = String(item.payment_status).toLowerCase() === "overdue";
+                    return {
+                        invoice: item.invoice || "N/A",
+                        tool_name: item.tool_name || "Equipment",
+                        serial: item.serial,
+                        category: "Receiver",
+                        payment_status: isOverdue ? "overdue" : "paid",
+                        is_overdue: isOverdue,
+                        is_fully_paid: !isOverdue,
+                        current_code: isOverdue ? null : item.current_code,
+                        expiry: item.duration || item.expiry || null
+                    }
+                });
+        }
+
+        console.log("4. Final Data sending to Cards:", allEquipment);
         setEquipmentList(allEquipment);
+
       } catch (error) {
         console.error("Dashboard Load Error:", error);
       } finally {
@@ -100,7 +162,7 @@ const CustomerDashboard = () => {
     };
 
     loadData();
-  }, []);
+  }, []); // Added dependencies to ensure it runs correctly
 
   if (loading) {
     return (
@@ -188,7 +250,7 @@ const CustomerDashboard = () => {
                         <CardContent className="pt-4 space-y-4">
                             <div>
                                 <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Serial Number</p>
-                                <p className="font-mono text-sm text-white bg-slate-900/50 p-2 rounded border border-slate-800">{item.serial}</p>
+                                <p className="font-mono text-sm text-white bg-slate-900/50 p-2 rounded border border-slate-800 break-all">{item.serial}</p>
                             </div>
 
                             <div className={`p-3 rounded-lg border ${item.is_fully_paid ? "bg-green-950/30 border-green-900/50" : "bg-red-950/10 border-red-900/30"}`}>
@@ -201,14 +263,14 @@ const CustomerDashboard = () => {
                                             {item.current_code ? item.current_code : "PENDING GENERATION"}
                                         </code>
                                         {item.current_code && (
-                                            <button className="text-slate-400 hover:text-white ml-2" onClick={() => navigator.clipboard.writeText(item.current_code)}>
+                                            <button className="text-slate-400 hover:text-white ml-2 flex-shrink-0" onClick={() => navigator.clipboard.writeText(item.current_code)}>
                                                 <Copy className="w-4 h-4" />
                                             </button>
                                         )}
                                     </div>
                                 ) : (
                                     <div className="text-center py-2">
-                                        <div className="text-lg font-bold text-slate-700 blur-[4px] select-none">XXXX-XXXX</div>
+                                        <div className="text-lg font-bold text-slate-700 blur-[4px] select-none">XXXX-XXXX-XXXX-XXXX</div>
                                         <p className="text-xs text-red-300">Requires full payment</p>
                                     </div>
                                 )}

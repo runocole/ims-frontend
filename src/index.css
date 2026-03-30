@@ -4,6 +4,13 @@
    Glowing Looping Hero Animation
 --------------------------------*/
 
+html, body {
+  height: 100%;
+  margin: 0;
+  background-color: #0f172a; /* same as your app background */
+}
+
+
 @keyframes fadeInLine {
   0% {
     opacity: 0;

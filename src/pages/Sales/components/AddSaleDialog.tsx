@@ -50,7 +50,7 @@ interface AddSaleDialogProps {
   onPaymentPlanChange: (value: string) => void;
   onInitialDepositChange: (value: string) => void;
   onPaymentMonthsChange: (value: string) => void;
-  onExpiryDateChange: (value: string) => void;
+  // REMOVED onExpiryDateChange from here!
   onSaveDraft: () => void;
   onSaveAndSend: () => void;
   onCancel: () => void;
@@ -70,7 +70,7 @@ export const AddSaleDialog = ({
   totalCost,
   applyTax,
   onTaxChange,
-  staffList = [], // Now using the real list from backend props
+  staffList = [], 
   selectedStaff,
   onStaffChange,
   isSubmitting,
@@ -84,7 +84,7 @@ export const AddSaleDialog = ({
   onPaymentPlanChange,
   onInitialDepositChange,
   onPaymentMonthsChange,
-  onExpiryDateChange,
+  // REMOVED onExpiryDateChange from here!
   onSaveDraft,
   onSaveAndSend,
   onCancel
@@ -110,14 +110,13 @@ export const AddSaleDialog = ({
                 Sold By (Staff Override)
               </label>
               <select 
-                className="w-full bg-slate-900 border border-slate-700 rounded-md p-2 text-white focus:outline-none focus:border-blue-500"
-                value={selectedStaff}
+                value={selectedStaff} 
                 onChange={(e) => onStaffChange(e.target.value)}
-                disabled={isSubmitting}
+                className="w-full bg-slate-900 border border-slate-700 rounded-md p-2 text-white focus:outline-none focus:border-blue-50"
               >
-                <option value="">-- Default (Logged In User) --</option>
-                {staffList.map((staff) => (
-                  <option key={staff.id} value={staff.id}>
+                <option value="">Select Staff...</option>
+                {staffList && staffList.map((staff) => (
+                  <option key={staff.id} value={staff.name}>
                     {staff.name}
                   </option>
                 ))}
@@ -170,7 +169,7 @@ export const AddSaleDialog = ({
             onPaymentPlanChange={onPaymentPlanChange}
             onInitialDepositChange={onInitialDepositChange}
             onPaymentMonthsChange={onPaymentMonthsChange}
-            onExpiryDateChange={onExpiryDateChange}
+            // REMOVED onExpiryDateChange from here!
           />
         </div>
 

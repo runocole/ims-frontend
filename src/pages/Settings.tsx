@@ -269,32 +269,26 @@ const Settings: React.FC = () => {
     setEditingId(null);
   };
 
+  // FIXED: Simplified Calculation Logic. The state "exchangeRate" is now the single source of truth.
   useEffect(() => {
     if (equipmentForm.default_cost) {
-      let rate: number | null = null;
-      
-      if (!isEditMode && exchangeRate) {
-        rate = parseFloat(exchangeRate);
-      }
-      else if (!isEditMode && selectedInvoice) {
-        const selectedInvoiceData = invoices.find(inv => inv.invoice_number === selectedInvoice);
-        if (selectedInvoiceData?.exchange_rate) {
-          rate = parseFloat(selectedInvoiceData.exchange_rate);
-        }
-      }
-      
-      if (rate && !isNaN(rate)) {
+      const currentRate = parseFloat(exchangeRate) || 0; // Fallback to 0 safely
+
+      if (currentRate > 0) {
         const usdCost = parseFloat(equipmentForm.default_cost);
         if (!isNaN(usdCost)) {
-          const nairaCost = usdCost * rate;
-          setEquipmentForm(prev => ({
-            ...prev,
-            naira_cost: nairaCost.toFixed(2)
-          }));
+          const nairaCost = (usdCost * currentRate).toFixed(2);
+          // Only update if it actually changed to prevent infinite render loops
+          if (equipmentForm.naira_cost !== nairaCost) {
+            setEquipmentForm(prev => ({
+              ...prev,
+              naira_cost: nairaCost
+            }));
+          }
         }
       }
     }
-  }, [equipmentForm.default_cost, exchangeRate, selectedInvoice, isEditMode, invoices]);
+  }, [equipmentForm.default_cost, exchangeRate]);
 
   const openAddInvoiceDialog = () => {
     resetForms();
@@ -974,7 +968,14 @@ const Settings: React.FC = () => {
                 </div>
                 <Select 
                   value={selectedInvoice} 
-                  onValueChange={setSelectedInvoice}
+                  onValueChange={(value) => {
+                    setSelectedInvoice(value);
+                    // FIXED: Auto-fill exchange rate state when an invoice is picked from dropdown
+                    const selectedInvoiceData = invoices.find(inv => inv.invoice_number === value);
+                    if (selectedInvoiceData && selectedInvoiceData.exchange_rate) {
+                      setExchangeRate(selectedInvoiceData.exchange_rate);
+                    }
+                  }}
                 >
                   <SelectTrigger className="bg-[#162a52] border-[#2a4375] text-white">
                     <SelectValue placeholder="Select an invoice" />
@@ -991,6 +992,28 @@ const Settings: React.FC = () => {
                   <p className="text-sm text-red-400 mt-2">
                     Please select an invoice to add equipment to
                   </p>
+                )}
+
+                {/* FIXED: UI Addition - You can now see and manually edit the rate inside the equipment form */}
+                {selectedInvoice && (
+                  <div className="mt-4 pt-4 border-t border-blue-800/30 space-y-2">
+                    <Label htmlFor="manual-rate" className="text-sm font-medium text-blue-300 flex items-center gap-2">
+                      <DollarSign className="h-4 w-4" />
+                      Active Exchange Rate
+                    </Label>
+                    <Input
+                      id="manual-rate"
+                      type="number"
+                      step="0.01"
+                      value={exchangeRate}
+                      onChange={(e) => setExchangeRate(e.target.value)}
+                      placeholder="e.g. 1500.00"
+                      className="bg-[#0a1628] border-[#2a4375] text-white"
+                    />
+                    <p className="text-xs text-gray-400">
+                      You can manually adjust the exchange rate for this specific item before saving.
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
@@ -1079,16 +1102,13 @@ const Settings: React.FC = () => {
               </div>
             </div>
 
-            {(exchangeRate || (selectedInvoice && invoices.find(inv => inv.invoice_number === selectedInvoice)?.exchange_rate)) && !isEditMode && (
+            {/* FIXED: Simplified visual confirmation of rate logic */}
+            {exchangeRate && !isEditMode && parseFloat(exchangeRate) > 0 && (
               <div className="bg-green-900/20 border border-green-700/30 rounded-lg p-3">
                 <div className="flex items-center gap-2 text-green-300 text-sm">
                   <DollarSign className="h-4 w-4" />
                   <span>
-                    Exchange Rate: 1 USD = ₦
-                    {parseFloat(
-                      exchangeRate || 
-                      (selectedInvoice ? invoices.find(inv => inv.invoice_number === selectedInvoice)?.exchange_rate || "0" : "0")
-                    ).toLocaleString()}
+                    Active Conversion: 1 USD = ₦{parseFloat(exchangeRate).toLocaleString()}
                   </span>
                 </div>
               </div>

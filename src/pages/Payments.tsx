@@ -52,6 +52,7 @@ interface PaymentRow {
   amount: string;
   date: string;
   payment_plan: string;
+  status: string;
   payment_status: string;
   state: string;
 }
@@ -72,6 +73,7 @@ const getStatusBadgeStyle = (status?: string) => {
   if (s === "pending") return "bg-orange-900/50 text-orange-400 border-orange-800";
   if (s === "installment") return "bg-indigo-900/50 text-indigo-400 border-indigo-800";
   if (s === "failed") return "bg-red-900/50 text-red-400 border-red-800";
+  if (s === "overdue") return "bg-rose-900/50 text-rose-400 border-rose-800"; // ADDED OVERDUE STATE
   return "bg-slate-700/50 text-slate-300 border-slate-600"; 
 };
 
@@ -345,7 +347,8 @@ const PaymentTracking = () => {
             </div>
 
             <div className="flex gap-2 flex-wrap">
-              {["all", "completed", "ongoing", "pending", "installment", "failed"].map((s) => (
+              {/* ADDED 'overdue' TO THIS ARRAY */}
+              {["all", "completed", "ongoing", "pending", "installment", "overdue", "failed"].map((s) => (
                 <button
                   key={s}
                   onClick={() => setStatusFilter(s)}

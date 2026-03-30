@@ -276,15 +276,25 @@ const DashboardPage = () => {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(value: number, _name: string) => {
-                        const total = (dashboardData?.inventoryBreakdown || []).reduce(
-                          (sum: number, item: any) => sum + item.count,
-                          0
-                        );
-                        const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : "0";
-                        return [`${value} tools (${percentage}%)`, "Count"];
-                      }}
-                    />
+  formatter={(value: number | string | undefined) => {
+    // 1. Handle missing values immediately
+    if (value === undefined || value === null) return ["0 tools (0%)", "Count"];
+    
+    // 2. Convert to number for calculations
+    const numericValue = typeof value === "string" ? parseFloat(value) : value;
+    
+    // 3. Calculate total safely
+    const total = (dashboardData?.inventoryBreakdown || []).reduce(
+      (sum: number, item: any) => sum + (Number(item.count) || 0),
+      0
+    );
+
+    const percentage = total > 0 ? ((numericValue / total) * 100).toFixed(1) : "0";
+    
+    // 4. CRITICAL: Both elements in the array MUST be strings
+    return [String(`${numericValue} tools (${percentage}%)`), "Count"];
+  }}
+/>
                   </PieChart>
                 </ResponsiveContainer>
 

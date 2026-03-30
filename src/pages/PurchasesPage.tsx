@@ -65,18 +65,75 @@ const PurchasesPage: React.FC = () => {
       const salesData = await salesRes.json();
       const paymentsData = await paymentsRes.json();
 
-      const specificSale = Array.isArray(salesData) ? salesData.find((s: any) => s.invoice_number === invoice_number) || salesData[0] : (salesData.results || []).find((s: any) => s.invoice_number === invoice_number);
+      let specificSale = Array.isArray(salesData) 
+        ? salesData.find((s: any) => s.invoice_number === invoice_number) || salesData[0] 
+        : (salesData.results || []).find((s: any) => s.invoice_number === invoice_number);
+
+      const specificPayments = Array.isArray(paymentsData) ? paymentsData : (paymentsData.results || []);
+      const filteredPayments = specificPayments.filter((p: any) => 
+        p.invoice_number === invoice_number || p.sale === specificSale?.id
+      );
+
+      // 🔥 AUTO-OVERDUE CHECK LOGIC 🔥
+      if (specificSale && specificSale.payment_status === "ongoing") {
+        const now = new Date();
+        
+        // 1. Check inactivity: Use 'date_sold' exactly as it comes from your Django backend
+        let latestDateStr = specificSale.date_sold || now.toISOString();
+        
+        if (filteredPayments.length > 0) {
+          const latestPayment = filteredPayments.reduce((latest: any, current: any) => {
+            // Adjusting to check standard payment date fields
+            const latestD = new Date(latest.payment_date || latest.created_at || 0);
+            const currentD = new Date(current.payment_date || current.created_at || 0);
+            return currentD > latestD ? current : latest;
+          });
+          latestDateStr = latestPayment.payment_date || latestPayment.created_at || latestDateStr;
+        }
+
+        const latestDate = new Date(latestDateStr);
+        // Calculate exact days difference
+        const daysSinceLastPayment = (now.getTime() - latestDate.getTime()) / (1000 * 3600 * 24);
+        const isInactiveOverdue = daysSinceLastPayment >= 90;
+
+        // 2. Check plan expiration: Use 'due_date' exactly as it comes from your Django backend
+        let isPlanOverdue = false;
+        if (specificSale.due_date) {
+            const planDeadline = new Date(specificSale.due_date);
+            isPlanOverdue = now.getTime() > planDeadline.getTime();
+        }
+
+        // If EITHER rule is broken, mark them as overdue!
+        if (isInactiveOverdue || isPlanOverdue) {
+          try {
+            const patchRes = await fetch(`${API_BASE_URL}/sales/${specificSale.id}/`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+              body: JSON.stringify({ payment_status: "overdue" }), 
+            });
+
+            if (patchRes.ok) {
+              specificSale.payment_status = "overdue"; // Update UI instantly
+              
+              if (isInactiveOverdue) {
+                 toast.error("Status updated to OVERDUE (No payments in 90 days).");
+              } else {
+                 toast.error("Status updated to OVERDUE (Payment plan expired).");
+              }
+            }
+          } catch (autoErr) {
+            console.error("Failed to auto-update overdue status", autoErr);
+          }
+        }
+      }
+      // 🔥 END AUTO-OVERDUE LOGIC 🔥
+
       setInvoiceDetail(specificSale);
       setEditInvoiceData({
         total_cost: specificSale?.total_cost || "0",
         initial_deposit: specificSale?.initial_deposit || "0"
       });
-
-      const specificPayments = Array.isArray(paymentsData) ? paymentsData : (paymentsData.results || []);
-      
-      setInvoicePayments(specificPayments.filter((p: any) => 
-        p.invoice_number === invoice_number || p.sale === specificSale?.id
-      ));
+      setInvoicePayments(filteredPayments);
 
     } catch (error) {
       toast.error("Failed to fetch invoice details.");

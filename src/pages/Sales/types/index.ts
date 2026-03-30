@@ -32,6 +32,8 @@ export interface Sale {
   phone: string;
   state: string;
   items: SaleItem[];
+  due_date?: string;       // Optional because Full Payments won't have it
+  is_overdue?: boolean;    // This comes from our Django @property
   total_cost: string;
   staff_name?: string;
   staff?: string | number;
@@ -79,6 +81,9 @@ export interface Tool {
 }
 
 export interface GroupedTool {
+  id?: number | string;   // Add this
+  pk?: number | string;   // Add this
+  _id?: number | string;  // Add this
   name: string;
   category: string;
   cost: string | number;
@@ -117,6 +122,7 @@ export interface CurrentItem {
   selectedTool: GroupedTool | null;
   cost: string;
   quantity: number;
+  tool_id?: number | string;
 }
 
 export interface SaleDetails {
@@ -149,5 +155,6 @@ export const PAYMENT_STATUSES = [
   "completed",
   "installment",
   "failed",
-  "cancelled"
+  "cancelled",
+  "overdue"
 ];
