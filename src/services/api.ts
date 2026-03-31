@@ -77,11 +77,11 @@ export const getStaff = async () => {
 // ----------------------------
 // CUSTOMERS
 // ----------------------------
-export const getCustomers = async () => {
-  const response = await axios.get(`${API_URL}/customers/`, {
-    headers: authHeader(),
-  });
-  return response.data;
+export const getCustomers = async (page = 1, search = "") => {
+  const params: Record<string, any> = { page };
+  if (search) params.search = search;
+  const response = await axios.get(`${API_URL}/customers/`, { params, headers: authHeader() });
+  return response.data;  // return full paginated object {count, next, previous, results}
 };
 
 export const registerCustomer = async (

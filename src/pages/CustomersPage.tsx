@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "react-router-dom"; // Add this import
+import { useLocation } from "react-router-dom";
 import { DashboardLayout } from "../components/DashboardLayout";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import { Search, Plus, Mail, Phone } from "lucide-react";
+import { Search, Plus, Mail, Phone, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "../components/ui/use-toast";
 
 // ------------------------------
@@ -40,7 +40,15 @@ const CustomersPage = () => {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [newCustomer, setNewCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(false);
-  const [urlSearchQuery, setUrlSearchQuery] = useState(""); // Add this state
+  const [urlSearchQuery, setUrlSearchQuery] = useState("");
+
+  // ------------------------------
+  // PAGINATION STATE
+  // ------------------------------
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrev, setHasPrev] = useState(false);
 
   // Add Customer Fields
   const [formData, setFormData] = useState({
@@ -56,10 +64,13 @@ const CustomersPage = () => {
   // ------------------------------
   // Fetch Customers
   // ------------------------------
-  const fetchCustomers = async () => {
+  const fetchCustomers = async (page = 1, search = "") => {
     try {
-      const data = await getCustomers();
-      setCustomers(data);
+      const data = await getCustomers(page, search);
+      setCustomers(data.results);
+      setTotalCount(data.count);
+      setHasNext(!!data.next);
+      setHasPrev(!!data.previous);
     } catch (error) {
       console.error("Failed to fetch customers:", error);
       toast({ title: "Error", description: "Could not fetch customers." });
@@ -67,7 +78,7 @@ const CustomersPage = () => {
   };
 
   useEffect(() => {
-    fetchCustomers();
+    fetchCustomers(currentPage, searchTerm);
   }, []);
 
   // ------------------------------
@@ -76,18 +87,19 @@ const CustomersPage = () => {
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
     const search = searchParams.get('search');
-    
+
     if (search) {
       setUrlSearchQuery(search);
-      setSearchTerm(search); // Also set the local search term
-      
-      // Optional: Scroll to highlighted customer after a short delay
+      setSearchTerm(search);
+      setCurrentPage(1);
+      fetchCustomers(1, search);
+
       setTimeout(() => {
         const highlightedRow = document.querySelector('.highlighted-customer');
         if (highlightedRow) {
-          highlightedRow.scrollIntoView({ 
-            behavior: 'smooth', 
-            block: 'center' 
+          highlightedRow.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
           });
         }
       }, 500);
@@ -95,7 +107,7 @@ const CustomersPage = () => {
   }, [location.search]);
 
   // ------------------------------
-  // Add Customer
+  // Add Customer — Optimistic UI Update
   // ------------------------------
   const handleAddCustomer = async () => {
     const { name, email, phone, state } = formData;
@@ -105,58 +117,87 @@ const CustomersPage = () => {
       return;
     }
 
+    // Build a temporary customer object instantly
+    const tempCustomer: Customer = {
+      id: `temp-${Date.now()}`,
+      name,
+      email,
+      phone,
+      state,
+      is_activated: false,
+    };
+
+    // ✅ OPTIMISTIC UPDATE: Add to list immediately before API call
+    setCustomers((prev) => [tempCustomer, ...prev]);
+    setNewCustomer(tempCustomer);
+    setFormData({ name: "", email: "", phone: "", state: "" });
+    setShowAddModal(false);
+    setShowSuccessModal(true);
+
     try {
       setLoading(true);
       const response = await registerCustomer(name, email, phone, state);
-      
-      // Store the newly created customer for the sales page
-      const createdCustomer: Customer = {
-        id: response.id || String(customers.length + 1),
-        name: name,
-        email: email,
-        phone: phone,
-        state: state,
-        is_activated: false
+
+      // Replace temp customer with real one from server
+      const confirmedCustomer: Customer = {
+        id: response.id || tempCustomer.id,
+        name,
+        email,
+        phone,
+        state,
+        is_activated: false,
       };
-      
-      setNewCustomer(createdCustomer);
-      toast({ 
-        title: "Success", 
-        description: "Customer added successfully! Email with password has been sent." 
+
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === tempCustomer.id ? confirmedCustomer : c))
+      );
+      setNewCustomer(confirmedCustomer);
+
+      toast({
+        title: "Success",
+        description: "Customer added successfully! Email with password has been sent.",
       });
-      setFormData({ name: "", email: "", phone: "", state: "" });
-      setShowAddModal(false);
-      setShowSuccessModal(true);
-      fetchCustomers();
+
+      // ✅ FIXED: Sync with correct page and search arguments
+      fetchCustomers(1, searchTerm);
+      setCurrentPage(1);
+
     } catch (error: any) {
       console.error("Add customer failed:", error);
-      
-      // Check if the error is about email sending but customer was created
+
       if (error.response?.status === 500 && error.response?.data?.detail?.includes('email')) {
-        // Customer might have been created but email failed
-        const createdCustomer: Customer = {
-          id: error.response.data.id || String(customers.length + 1),
-          name: name,
-          email: email,
-          phone: phone,
-          state: state,
-          is_activated: false
+        const confirmedCustomer: Customer = {
+          id: error.response.data.id || tempCustomer.id,
+          name,
+          email,
+          phone,
+          state,
+          is_activated: false,
         };
-        
-        setNewCustomer(createdCustomer);
-        toast({ 
-          title: "Customer Created", 
+
+        setCustomers((prev) =>
+          prev.map((c) => (c.id === tempCustomer.id ? confirmedCustomer : c))
+        );
+        setNewCustomer(confirmedCustomer);
+
+        toast({
+          title: "Customer Created",
           description: "Customer was created but email failed to send. You can still add a sale.",
-          variant: "destructive"
+          variant: "destructive",
         });
-        setFormData({ name: "", email: "", phone: "", state: "" });
-        setShowAddModal(false);
-        setShowSuccessModal(true);
-        fetchCustomers();
+
+        // ✅ FIXED: Sync with correct page and search arguments
+        fetchCustomers(1, searchTerm);
+        setCurrentPage(1);
+
       } else {
-        toast({ 
-          title: "Error", 
-          description: error.response?.data?.detail || "Failed to add customer." 
+        // ❌ ROLLBACK: Remove temp customer if request truly failed
+        setCustomers((prev) => prev.filter((c) => c.id !== tempCustomer.id));
+        setShowSuccessModal(false);
+
+        toast({
+          title: "Error",
+          description: error.response?.data?.detail || "Failed to add customer.",
         });
       }
     } finally {
@@ -169,7 +210,6 @@ const CustomersPage = () => {
   // ------------------------------
   const handleAddSale = () => {
     if (newCustomer) {
-      // Store customer data for the sales page
       localStorage.setItem('selectedCustomer', JSON.stringify({
         id: newCustomer.id,
         name: newCustomer.name,
@@ -177,35 +217,25 @@ const CustomersPage = () => {
         phone: newCustomer.phone,
         state: newCustomer.state
       }));
-      
-      // Navigate to sales page
-      window.location.href = '/sales'; // or use your router if using React Router
+      window.location.href = '/sales';
     }
   };
 
   // ------------------------------
-  // Filter Customers (Search)
+  // Search Handler — calls backend
   // ------------------------------
-  const filteredCustomers = customers.filter((customer) => {
-    const term = searchTerm.toLowerCase();
-
-    const name = customer.name?.toLowerCase() || "";
-    const email = customer.email?.toLowerCase() || "";
-    const phone = customer.phone?.toLowerCase() || "";
-
-    return (
-      name.includes(term) ||
-      email.includes(term) ||
-      phone.includes(term)
-    );
-  });
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    setCurrentPage(1);
+    fetchCustomers(1, value);
+  };
 
   // ------------------------------
   // Check if customer matches URL search
   // ------------------------------
   const isCustomerHighlighted = (customer: Customer) => {
     if (!urlSearchQuery) return false;
-    
     const query = urlSearchQuery.toLowerCase();
     return (
       customer.name?.toLowerCase().includes(query) ||
@@ -220,7 +250,8 @@ const CustomersPage = () => {
   const clearUrlSearch = () => {
     setUrlSearchQuery("");
     setSearchTerm("");
-    // Clear URL parameters without page reload
+    setCurrentPage(1);
+    fetchCustomers(1, "");
     window.history.replaceState({}, '', window.location.pathname);
   };
 
@@ -318,7 +349,7 @@ const CustomersPage = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Search Header - Show URL search results */}
+        {/* URL Search Banner */}
         {urlSearchQuery && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-center justify-between">
@@ -328,12 +359,12 @@ const CustomersPage = () => {
                   Showing results for: "{urlSearchQuery}"
                 </span>
                 <span className="text-blue-600 text-sm">
-                  ({filteredCustomers.filter(isCustomerHighlighted).length} matches found)
+                  ({totalCount} matches found)
                 </span>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={clearUrlSearch}
                 className="text-blue-600 border-blue-300 hover:bg-blue-100"
               >
@@ -350,7 +381,7 @@ const CustomersPage = () => {
             placeholder="Search customers by name, email, or phone..."
             className="pl-10"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={handleSearchChange}
           />
         </div>
 
@@ -372,9 +403,9 @@ const CustomersPage = () => {
               </TableHeader>
 
               <TableBody>
-                {filteredCustomers.length > 0 ? (
-                  filteredCustomers.map((customer) => (
-                    <TableRow 
+                {customers.length > 0 ? (
+                  customers.map((customer) => (
+                    <TableRow
                       key={customer.id}
                       className={`
                         ${isCustomerHighlighted(customer) ? 'highlighted-customer bg-blue-950 border-l-4 border-l-yellow-500' : ''}
@@ -426,6 +457,48 @@ const CustomersPage = () => {
                 )}
               </TableBody>
             </Table>
+
+            {/* PAGINATION CONTROLS */}
+            {(hasNext || hasPrev) && (
+              <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-700">
+                <p className="text-sm text-muted-foreground">
+                  Showing {((currentPage - 1) * 10) + 1}–{Math.min(currentPage * 10, totalCount)} of {totalCount} customers
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const prev = currentPage - 1;
+                      setCurrentPage(prev);
+                      fetchCustomers(prev, searchTerm);
+                    }}
+                    disabled={!hasPrev}
+                    className="gap-1"
+                  >
+                    <ChevronLeft className="h-4 w-4" /> Prev
+                  </Button>
+
+                  <span className="text-sm text-muted-foreground">
+                    Page {currentPage} of {Math.ceil(totalCount / 10)}
+                  </span>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const next = currentPage + 1;
+                      setCurrentPage(next);
+                      fetchCustomers(next, searchTerm);
+                    }}
+                    disabled={!hasNext}
+                    className="gap-1"
+                  >
+                    Next <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
