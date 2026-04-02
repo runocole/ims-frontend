@@ -80,8 +80,8 @@ const StaffPage = () => {
 
   // ✅ Updated to navigate to your new StaffProfileView page
   const handleViewProfile = (staffId: string, staffName: string) => {
-    // Make sure this route matches exactly what you have in App.tsx
-    navigate(`/sales/staff/${staffId}`, { state: { staffName } });
+    const encodedName = encodeURIComponent(staffName);
+    navigate(`/sales/staff/${encodedName}`, { state: { staffEmail: "" } });
   };
 
   const filteredStaff = (Array.isArray(staffList) ? staffList : []).filter((s) => {

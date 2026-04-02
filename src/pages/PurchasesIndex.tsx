@@ -150,8 +150,25 @@ const PurchaseIndex = () => {
                   
                   {/* Right: Price & Button */}
                   <div className="text-left md:text-right md:min-w-[150px]">
-                    <p className="text-white font-bold text-lg mb-1">₦{parseFloat(sale.total_cost).toLocaleString()}</p>
-                    <Button variant="link" className="text-emerald-500 p-0 h-auto group-hover:text-emerald-400">View Ledger →</Button>
+                    <p className="text-white font-bold text-lg mb-1">
+                      ₦{parseFloat(sale.total_cost).toLocaleString()}
+                    </p>
+                    {/* Payment status badge */}
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border mb-2 ${
+                      (sale.payment_status || "").toLowerCase() === "completed"
+                        ? "bg-emerald-900/50 text-emerald-400 border-emerald-800"
+                        : (sale.payment_status || "").toLowerCase() === "ongoing"
+                        ? "bg-blue-900/50 text-blue-400 border-blue-800"
+                        : (sale.payment_status || "").toLowerCase() === "overdue"
+                        ? "bg-red-900/50 text-red-400 border-red-800"
+                        : "bg-orange-900/50 text-orange-400 border-orange-800"
+                    }`}>
+                      {sale.payment_status || "pending"}
+                    </span>
+                    <br />
+                    <Button variant="link" className="text-emerald-500 p-0 h-auto group-hover:text-emerald-400">
+                      View Ledger →
+                    </Button>
                   </div>
                 </div>
               ))}

@@ -76,7 +76,7 @@ const AdminSalesPage: React.FC = () => {
   };
 
   // --- Fetching Logic ---
-  useEffect(() => {
+ useEffect(() => {
     const fetchSales = async () => {
       try {
         setLoading(true);
@@ -92,17 +92,23 @@ const AdminSalesPage: React.FC = () => {
         });
         
         const data = response.data;
+        
+        // 1. Update the table list and total count
         setSales(data.results || []);
         setTotalCount(data.count || 0);
 
-        // Update Stats: If your backend sends totals in the response, use them.
-        // Otherwise, we use the total count for the first card.
-        setStats(prev => ({
-          ...prev,
-          totalSales: data.count || 0,
-          totalRevenue: data.total_revenue || prev.totalRevenue, // Assuming backend sends this
-          pendingPayments: data.pending_count || prev.pendingPayments
-        }));
+        // 2. Extract the summary data from our new backend update
+        // We use || {} to prevent errors if the backend hasn't loaded yet
+        const summary = data.summary || {};
+
+        // 3. Update the Stats Cards
+        setStats({
+          totalSales: data.count || 0, // Total number of sales
+          totalRevenue: summary.total_revenue || 0, // Sum from backend
+          pendingPayments: summary.ongoing_sales || 0, // Count of 'ongoing' sales from backend
+          // We count installment plans from the 10 items currently in the table
+          totalInstallments: (data.results || []).filter((sale: Sale) => sale.payment_plan === "Yes").length
+        });
 
       } catch (error) {
         console.error("Failed to load sales:", error);

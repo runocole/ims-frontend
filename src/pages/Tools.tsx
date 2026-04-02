@@ -3,30 +3,19 @@ import { DashboardLayout } from "../components/DashboardLayout";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card, CardContent } from "../components/ui/card";
-import { Search, Plus, Trash2, Edit2, Download, CheckCircle, X, FileText, Barcode, Eye } from "lucide-react";
+import { Search, Plus, Trash2, Edit2, Download, CheckCircle, X, FileText, Barcode, Eye, AlertCircle } from "lucide-react";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogFooter, DialogDescription,
 } from "../components/ui/dialog";
 import { Label } from "../components/ui/label";
 import {
-  Select,
-  SelectTrigger,
-  SelectContent,
-  SelectItem,
-  SelectValue,
+  Select, SelectTrigger, SelectContent,
+  SelectItem, SelectValue,
 } from "../components/ui/select";
 import {
-  getTools,
-  createTool,
-  updateTool,
-  deleteTool,
-  getEquipmentTypes,
-  getSuppliers,
+  getTools, createTool, updateTool, deleteTool,
+  getEquipmentTypes, getSuppliers,
 } from "../services/api";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -47,7 +36,7 @@ interface Tool {
   date_added?: string;
   serials?: string[];
   available_serials?: string[];
-  sold_serials?: any[]; 
+  sold_serials?: any[];
   equipment_type?: string | null;
   equipment_type_id?: number | string | null;
 }
@@ -72,7 +61,7 @@ interface EquipmentType {
   name: string;
   default_cost?: string | number;
   category?: string;
-  invoice_number?: string; 
+  invoice_number?: string;
 }
 
 interface Supplier {
@@ -98,17 +87,46 @@ interface SoldSerialInfo {
 
 /* ---------------- Constants ---------------- */
 const CATEGORY_OPTIONS = [
-  "Receiver",
-  "Accessories",
-  "Total Stations",
-  "Levels",
-  "Drones",
-  "EcoSounders",
-  "Laser Scanners",
-  "Others",
+  "Receiver", "Accessories", "Total Stations", "Levels",
+  "Drones", "EcoSounders", "Laser Scanners", "Others",
 ];
 
-// Toast Component
+// ================================================================
+// GLOBAL DUPLICATE CHECK — applies to ALL categories
+// Searches code + serials[] + available_serials[] across every tool
+// ================================================================
+const findDuplicateSerial = (
+  serial: string,
+  allTools: Tool[],
+  excludeToolId?: string | null
+): string | null => {
+  const s = (serial || "").toLowerCase().trim();
+  if (!s) return null;
+  for (const tool of allTools) {
+    if (tool.id === excludeToolId) continue;
+    if ((tool.code || "").toLowerCase().trim() === s) return tool.name;
+    if (Array.isArray(tool.serials)) {
+      for (const existing of tool.serials) {
+        if ((existing || "").toLowerCase().trim() === s) return tool.name;
+      }
+    }
+    if (Array.isArray(tool.available_serials)) {
+      for (const existing of tool.available_serials) {
+        if ((existing || "").toLowerCase().trim() === s) return tool.name;
+      }
+    }
+  }
+  return null;
+};
+
+// Box type serial count rules
+const getMaxExtrasForBoxType = (boxType: string): number => {
+  if (boxType === "Base and Rover") return 3; // main + 3 = 4 total
+  if (boxType === "Base" || boxType === "Rover") return 1; // main + 1 = 2 total
+  return 0;
+};
+
+/* ---------------- Toast Component ---------------- */
 const Toast = ({ message, onClose }: { message: string; onClose: () => void }) => (
   <div className="fixed top-4 right-4 z-50 flex items-center gap-3 bg-green-600 text-white px-4 py-3 rounded-lg shadow-lg border border-green-400 animate-in slide-in-from-right-8 duration-300">
     <CheckCircle className="h-5 w-5" />
@@ -119,98 +137,96 @@ const Toast = ({ message, onClose }: { message: string; onClose: () => void }) =
   </div>
 );
 
+/* ---------------- Inline Field Error ---------------- */
+const FieldError = ({ message }: { message: string | null | undefined }) => {
+  if (!message) return null;
+  return (
+    <div className="flex items-center gap-1.5 mt-1.5">
+      <AlertCircle className="h-3.5 w-3.5 text-red-400 flex-shrink-0" />
+      <p className="text-xs text-red-400">{message}</p>
+    </div>
+  );
+};
+
 /* ---------------- Component ---------------- */
 const Tools: React.FC = () => {
   const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Modal & form state
   const [open, setOpen] = useState(false);
   const [modalStep, setModalStep] = useState<
     "select-invoice" | "select-category" | "select-equipment-type" | "form"
-  >("select-invoice"); 
-  const [selectedInvoice, setSelectedInvoice] = useState<string | null>(null); 
+  >("select-invoice");
+  const [selectedInvoice, setSelectedInvoice] = useState<string | null>(null);
   const [selectedCategoryCard, setSelectedCategoryCard] = useState<string | null>(null);
   const [selectedEquipmentType, setSelectedEquipmentType] = useState<string | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingToolId, setEditingToolId] = useState<string | null>(null);
 
-  // Search & filter
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("");
-  const [invoiceSearchTerm, setInvoiceSearchTerm] = useState(""); 
+  const [invoiceSearchTerm, setInvoiceSearchTerm] = useState("");
 
-  // Equipment types
   const [equipmentTypes, setEquipmentTypes] = useState<EquipmentType[]>([]);
   const [isLoadingEquipmentTypes, setIsLoadingEquipmentTypes] = useState(false);
-
-  // Suppliers
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [isLoadingSuppliers, setIsLoadingSuppliers] = useState(false);
-
-  // Invoices
   const [invoices, setInvoices] = useState<Invoice[]>([]);
 
-  // Toast state
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
 
-  // Serial number viewing state
   const [viewingSerials, setViewingSerials] = useState<{
     open: boolean;
     tool: Tool | null;
     soldSerials: SoldSerialInfo[];
-  }>({
-    open: false,
-    tool: null,
-    soldSerials: []
+  }>({ open: false, tool: null, soldSerials: [] });
+
+  // ----------------------------------------------------------------
+  // UNIFIED FORM ERRORS — each appears below its own field
+  // ----------------------------------------------------------------
+  const [errors, setErrors] = useState<{
+    name?: string;
+    code?: string;
+    serials?: string[];
+    cost?: string;
+    supplier?: string;
+    boxType?: string;
+    serialCount?: string;
+  }>({});
+
+  const [form, setForm] = useState<any>({
+    name: "", code: "", cost: "", stock: "1", description: "",
+    supplier: "", category: "", invoice_number: "", expiry_date: "",
+    serials: [], available_serials: [], equipment_type_id: "", equipment_type: "",
   });
 
-  // Form model
-  const [form, setForm] = useState<any>({
-    name: "",
-    code: "",
-    cost: "",
-    stock: "1",
-    description: "",
-    supplier: "",
-    category: "",
-    invoice_number: "",
-    expiry_date: "",
-    serials: [],
-    available_serials: [], 
-    equipment_type_id: "",
-    equipment_type: "",
-  });
+  /* ---------------- Error Helpers ---------------- */
+  const clearError = (field: string) =>
+    setErrors((prev) => ({ ...prev, [field]: undefined }));
+  const resetErrors = () => setErrors({});
 
   /* ---------------- Grouping Logic ---------------- */
   const groupTools = (tools: Tool[]): GroupedTool[] => {
     const groups: { [key: string]: GroupedTool } = {};
-
     tools.forEach(tool => {
       if (tool.category === "Receiver" && tool.equipment_type) {
         const key = `receiver-${tool.equipment_type}`;
-        
         if (!groups[key]) {
           groups[key] = {
-            id: key,
-            name: tool.equipment_type,
+            id: key, name: tool.equipment_type,
             category: tool.category || "Receiver",
             equipment_type: tool.equipment_type,
             equipment_type_id: tool.equipment_type_id,
-            tools: [tool],
-            totalStock: tool.stock || 0,
+            tools: [tool], totalStock: tool.stock || 0,
             lastUpdated: tool.date_added || new Date().toISOString(),
-            cost: String(tool.cost),
-            description: tool.description,
-            supplier_name: tool.supplier_name,
-            latestTool: tool,
+            cost: String(tool.cost), description: tool.description,
+            supplier_name: tool.supplier_name, latestTool: tool,
           };
         } else {
           groups[key].tools.push(tool);
           groups[key].totalStock += tool.stock || 0;
-          
           if (tool.date_added && tool.date_added > groups[key].lastUpdated) {
             groups[key].lastUpdated = tool.date_added;
             groups[key].latestTool = tool;
@@ -218,19 +234,14 @@ const Tools: React.FC = () => {
         }
       } else {
         const key = `${tool.category || "Uncategorized"}-${tool.name}`;
-        
         if (!groups[key]) {
           groups[key] = {
-            id: key,
-            name: tool.name,
+            id: key, name: tool.name,
             category: tool.category || "Uncategorized",
-            tools: [tool],
-            totalStock: tool.stock || 0,
+            tools: [tool], totalStock: tool.stock || 0,
             lastUpdated: tool.date_added || new Date().toISOString(),
-            cost: String(tool.cost),
-            description: tool.description,
-            supplier_name: tool.supplier_name,
-            latestTool: tool,
+            cost: String(tool.cost), description: tool.description,
+            supplier_name: tool.supplier_name, latestTool: tool,
           };
         } else {
           groups[key].tools.push(tool);
@@ -242,7 +253,6 @@ const Tools: React.FC = () => {
         }
       }
     });
-
     return Object.values(groups);
   };
 
@@ -256,31 +266,22 @@ const Tools: React.FC = () => {
           if (Array.isArray(t.serials)) {
             serialsArr = t.serials;
           } else if (t.serials && typeof t.serials === "object") {
-            serialsArr = Object.keys(t.serials)
-              .sort()
-              .map((k) => t.serials[k])
-              .filter(Boolean);
+            serialsArr = Object.keys(t.serials).sort().map((k) => t.serials[k]).filter(Boolean);
           }
-          
           let availableSerials: string[] = [];
           if (Array.isArray(t.available_serials)) {
             availableSerials = t.available_serials;
           } else if (!t.available_serials && t.serials) {
             availableSerials = serialsArr;
           }
-          
           let soldSerials: any[] = [];
-          if (Array.isArray(t.sold_serials)) {
-            soldSerials = t.sold_serials;
-          }
-          
+          if (Array.isArray(t.sold_serials)) soldSerials = t.sold_serials;
           return {
             ...t,
             stock: typeof t.stock === "number" ? t.stock : Number(t.stock || 0),
             category: t.category === "Accessory" ? "Accessories" : (t.category || ""),
-            serials: serialsArr,
-            available_serials: availableSerials, 
-            sold_serials: soldSerials, 
+            serials: serialsArr, available_serials: availableSerials,
+            sold_serials: soldSerials,
             equipment_type: t.equipment_type_name || (typeof t.equipment_type === 'string' ? t.equipment_type : t.name),
             equipment_type_id: t.equipment_type_id ?? "",
             expiry_date: t.expiry_date || "",
@@ -293,7 +294,6 @@ const Tools: React.FC = () => {
         setLoading(false);
       }
     };
-
     fetchTools();
   }, []);
 
@@ -301,9 +301,7 @@ const Tools: React.FC = () => {
     setIsLoadingEquipmentTypes(true);
     try {
       const filters: any = {};
-      if (invoiceNumber) {
-        filters.invoice_number = invoiceNumber;
-      }
+      if (invoiceNumber) filters.invoice_number = invoiceNumber;
       const data = await getEquipmentTypes(filters);
       setEquipmentTypes(data || []);
     } catch (err) {
@@ -329,9 +327,8 @@ const Tools: React.FC = () => {
 
   const fetchInvoices = async () => {
     try {
-      const data = await getEquipmentTypes(); 
+      const data = await getEquipmentTypes();
       const invoiceMap = new Map();
-      
       data.forEach((item: any) => {
         if (item.invoice_number) {
           if (!invoiceMap.has(item.invoice_number)) {
@@ -339,8 +336,7 @@ const Tools: React.FC = () => {
               id: item.invoice_number,
               invoice_number: item.invoice_number,
               created_at: item.created_at || new Date().toISOString(),
-              equipment_count: 0,
-              total_value: 0
+              equipment_count: 0, total_value: 0
             });
           }
           const invoice = invoiceMap.get(item.invoice_number);
@@ -348,7 +344,6 @@ const Tools: React.FC = () => {
           invoice.total_value += parseFloat(item.default_cost) || 0;
         }
       });
-
       setInvoices(Array.from(invoiceMap.values()));
     } catch (err) {
       console.warn("Could not fetch invoices:", err);
@@ -359,7 +354,6 @@ const Tools: React.FC = () => {
   const viewSerialNumbers = async (tool: Tool) => {
     try {
       const soldSerials: SoldSerialInfo[] = [];
-      
       for (const serialInfo of tool.sold_serials || []) {
         if (typeof serialInfo === 'object') {
           soldSerials.push({
@@ -371,20 +365,12 @@ const Tools: React.FC = () => {
           });
         } else {
           soldSerials.push({
-            serial: serialInfo,
-            sale_id: null,
-            customer_name: 'Unknown',
-            date_sold: null,
-            invoice_number: null
+            serial: serialInfo, sale_id: null,
+            customer_name: 'Unknown', date_sold: null, invoice_number: null
           });
         }
       }
-      
-      setViewingSerials({
-        open: true,
-        tool,
-        soldSerials
-      });
+      setViewingSerials({ open: true, tool, soldSerials });
     } catch (error) {
       console.error("Error fetching sold serials:", error);
       alert("Failed to load serial number history");
@@ -394,7 +380,7 @@ const Tools: React.FC = () => {
   useEffect(() => {
     fetchEquipmentTypes();
     fetchSuppliers();
-    fetchInvoices(); 
+    fetchInvoices();
   }, []);
 
   useEffect(() => {
@@ -407,42 +393,30 @@ const Tools: React.FC = () => {
     }
   }, [showToast]);
 
-  /* ---------------- Helpers ---------------- */
-  const resetForm = () =>
+  /* ---------------- Form Helpers ---------------- */
+  const resetForm = () => {
     setForm({
-      name: "",
-      code: "",
-      cost: "",
-      stock: "1",
-      description: "",
-      supplier: "",
-      category: "",
-      invoice_number: "",
-      expiry_date: "",
-      serials: [],
-      available_serials: [], 
-      equipment_type_id: "",
-      equipment_type: "",
+      name: "", code: "", cost: "", stock: "1", description: "",
+      supplier: "", category: "", invoice_number: "", expiry_date: "",
+      serials: [], available_serials: [], equipment_type_id: "", equipment_type: "",
     });
+    resetErrors();
+  };
 
   const openAddModal = () => {
     resetForm();
     setIsEditMode(false);
     setEditingToolId(null);
-    setSelectedInvoice(null); 
+    setSelectedInvoice(null);
     setSelectedCategoryCard(null);
     setSelectedEquipmentType(null);
-    setModalStep("select-invoice"); 
+    setModalStep("select-invoice");
     setOpen(true);
   };
 
   const getAllowedExtraLabels = (boxType: string): string[] => {
-    if (boxType === "Rover" || boxType === "Base") {
-      return ["Data Logger"];
-    }
-    if (boxType === "Base and Rover") {
-      return ["Receiver 2", "DataLogger", "External Radio"];
-    }
+    if (boxType === "Rover" || boxType === "Base") return ["Data Logger"];
+    if (boxType === "Base and Rover") return ["Receiver 2", "DataLogger", "External Radio"];
     return [];
   };
 
@@ -451,39 +425,33 @@ const Tools: React.FC = () => {
       Array.isArray(tool.serials) && tool.serials.length
         ? tool.serials.filter((s) => s !== tool.code)
         : [];
-
     setForm({
-      name: tool.name || "",
-      code: tool.code || "",
-      cost: String(tool.cost ?? ""),
-      stock: String(tool.stock ?? "1"),
-      description: tool.description || "",
-      supplier: tool.supplier || "",
-      category: tool.category || "",
-      invoice_number: tool.invoice_number || "",
+      name: tool.name || "", code: tool.code || "",
+      cost: String(tool.cost ?? ""), stock: String(tool.stock ?? "1"),
+      description: tool.description || "", supplier: tool.supplier || "",
+      category: tool.category || "", invoice_number: tool.invoice_number || "",
       expiry_date: tool.expiry_date || "",
       serials: extras.length ? extras : [],
-      available_serials: tool.available_serials || [], 
+      available_serials: tool.available_serials || [],
       equipment_type_id: tool.equipment_type_id || "",
       equipment_type: tool.equipment_type || "",
     });
-
+    resetErrors();
     setIsEditMode(true);
     setEditingToolId(tool.id ?? null);
     setSelectedCategoryCard(tool.category || null);
-
     if (tool.category === "Receiver") {
       fetchEquipmentTypes(tool.invoice_number).then(() => {
         const etId = tool.equipment_type_id ? String(tool.equipment_type_id) : "";
-        const found = equipmentTypes.find((e) => String(e.id) === String(etId) || e.name === tool.equipment_type);
-        if (found) {
-          setSelectedEquipmentType(String(found.id));
-        } else {
-          setSelectedEquipmentType(tool.equipment_type_id ? String(tool.equipment_type_id) : tool.equipment_type || null);
-        }
+        const found = equipmentTypes.find(
+          (e) => String(e.id) === String(etId) || e.name === tool.equipment_type
+        );
+        if (found) setSelectedEquipmentType(String(found.id));
+        else setSelectedEquipmentType(
+          tool.equipment_type_id ? String(tool.equipment_type_id) : tool.equipment_type || null
+        );
       });
     }
-
     setModalStep("form");
     setOpen(true);
   };
@@ -491,22 +459,34 @@ const Tools: React.FC = () => {
   /* ---------------- Serial extras logic ---------------- */
   const effectiveCategory = selectedCategoryCard || form.category;
   const shouldShowBoxTypeAndExtras = effectiveCategory === "Receiver";
-  const allowedExtraLabels = shouldShowBoxTypeAndExtras ? getAllowedExtraLabels(form.description) : [];
+  const allowedExtraLabels = shouldShowBoxTypeAndExtras
+    ? getAllowedExtraLabels(form.description)
+    : [];
+  const maxExtras = getMaxExtrasForBoxType(form.description || "");
 
   const canAddExtra = () => {
     if (!allowedExtraLabels || allowedExtraLabels.length === 0) return false;
-    return (form.serials || []).length < allowedExtraLabels.length;
+    return (form.serials || []).length < maxExtras;
   };
 
   const addExtraSerial = () => {
-    if (!canAddExtra()) {
-      alert(
-        allowedExtraLabels.length > 0
-          ? `Maximum of ${allowedExtraLabels.length} extra box(es) allowed for "${form.description}".`
-          : "No extras allowed for this box type."
-      );
+    if (!form.description) {
+      setErrors((prev) => ({
+        ...prev,
+        boxType: "Please select a Box Type before adding extra serials.",
+      }));
       return;
     }
+    if (!canAddExtra()) {
+      const maxTotal = form.description === "Base and Rover" ? 4 : 2;
+      setErrors((prev) => ({
+        ...prev,
+        serialCount: `${form.description} only supports ${maxTotal} serial numbers total (including the main serial).`,
+      }));
+      return;
+    }
+    clearError("serialCount");
+    clearError("boxType");
     setForm((prev: any) => ({ ...prev, serials: [...(prev.serials || []), ""] }));
   };
 
@@ -514,64 +494,158 @@ const Tools: React.FC = () => {
     const updated = Array.isArray(form.serials) ? [...form.serials] : [];
     updated.splice(index, 1);
     setForm((prev: any) => ({ ...prev, serials: updated }));
+    setErrors((prev) => {
+      const newSerialErrors = [...(prev.serials || [])];
+      newSerialErrors.splice(index, 1);
+      return { ...prev, serials: newSerialErrors };
+    });
   };
 
   const setExtraSerialValue = (index: number, value: string) => {
     const updated = Array.isArray(form.serials) ? [...form.serials] : [];
     updated[index] = value;
     setForm((prev: any) => ({ ...prev, serials: updated }));
+    setErrors((prev) => {
+      const newSerialErrors = [...(prev.serials || [])];
+      newSerialErrors[index] = "";
+      return { ...prev, serials: newSerialErrors };
+    });
   };
 
   /* ---------------- Equipment type selection ---------------- */
   const handleEquipmentTypeSelect = (val: string) => {
-    const found = equipmentTypes.find((e) => String(e.id) === String(val) || e.name === val);
+    const found = equipmentTypes.find(
+      (e) => String(e.id) === String(val) || e.name === val
+    );
     if (found) {
       setSelectedEquipmentType(String(found.id));
       setForm((prev: any) => ({
         ...prev,
-        equipment_type_id: found.id, 
-        equipment_type: found.name,
-        name: found.name,
-        cost: String(found.default_cost ?? prev.cost),
+        equipment_type_id: found.id, equipment_type: found.name,
+        name: found.name, cost: String(found.default_cost ?? prev.cost),
         category: selectedCategoryCard || prev.category,
         invoice_number: selectedInvoice || prev.invoice_number,
       }));
     } else {
       setSelectedEquipmentType(val);
-      setForm((prev: any) => ({ 
-        ...prev, 
-        equipment_type_id: val, 
-        equipment_type: val,
+      setForm((prev: any) => ({
+        ...prev, equipment_type_id: val, equipment_type: val,
         category: selectedCategoryCard || prev.category,
         invoice_number: selectedInvoice || prev.invoice_number,
       }));
     }
-    
     setModalStep("form");
   };
 
-  /* ---------------- Save / Update ---------------- */
+  /* ================================================================
+     HANDLE SAVE TOOL
+     Validation:
+     1. Name
+     2. Main serial — empty check + global duplicate (ALL categories)
+     3. Extra serials — empty check + global duplicate (ALL categories)
+     4. Box type serial count (Receiver only)
+     5. Cost
+     6. Supplier
+     NO prefix check — removed entirely.
+  ================================================================ */
   const handleSaveTool = async () => {
-    if (!String(form.name || "").trim() || !String(form.code || "").trim() || !String(form.cost || "").trim()) {
-      alert("Please fill in required fields: Name, Serial (Code), Cost.");
+    const newErrors: typeof errors = {};
+    const enteredCode = String(form.code || "").trim();
+    const allEnteredSerials = [
+      enteredCode,
+      ...(Array.isArray(form.serials) ? form.serials : []),
+    ].filter(Boolean);
+
+    // --- 1. Name ---
+    if (!String(form.name || "").trim()) {
+      newErrors.name = "Item name is required.";
+    }
+
+    // --- 2. Main serial — global duplicate only ---
+    if (!enteredCode) {
+      newErrors.code = "Main serial number is required.";
+    } else {
+      const dupTool = findDuplicateSerial(enteredCode, tools, editingToolId);
+      if (dupTool) {
+        newErrors.code = `S/N "${enteredCode}" already exists in the database (found in: ${dupTool}).`;
+      }
+    }
+
+    // --- 3. Extra serials — global duplicate only ---
+    const extraSerialErrors: string[] = (form.serials || []).map(
+      (serial: string) => {
+        const s = String(serial || "").trim();
+        if (!s) return "Serial number is required.";
+
+        // Duplicate within current form inputs
+        const occurrences = allEnteredSerials.filter(
+          (e) => e.toLowerCase() === s.toLowerCase()
+        );
+        if (occurrences.length > 1) return `S/N "${s}" is entered more than once.`;
+
+        // Global duplicate check
+        const dupTool = findDuplicateSerial(s, tools, editingToolId);
+        if (dupTool) return `S/N "${s}" already exists (found in: ${dupTool}).`;
+
+        return "";
+      }
+    );
+
+    if (extraSerialErrors.some((e) => e !== "")) {
+      newErrors.serials = extraSerialErrors;
+    }
+
+    // --- 4. Box type serial count (Receiver only) ---
+    if (shouldShowBoxTypeAndExtras) {
+      if (!form.description) {
+        newErrors.boxType = "Please select a Box Type.";
+      } else {
+        const totalSerials = allEnteredSerials.length;
+        const required = form.description === "Base and Rover" ? 4 : 2;
+        if (totalSerials < required) {
+          newErrors.serialCount = `${form.description} requires exactly ${required} serial numbers. You have ${totalSerials}.`;
+        }
+      }
+    }
+
+    // --- 5. Cost ---
+    if (
+      !String(form.cost || "").trim() ||
+      isNaN(parseFloat(String(form.cost)))
+    ) {
+      newErrors.cost = "A valid cost is required.";
+    }
+
+    // --- 6. Supplier ---
+    if (!form.supplier || String(form.supplier).trim() === "") {
+      newErrors.supplier = "Please select a supplier name.";
+    }
+
+    // Stop if any errors — show all at once
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
       return;
     }
+
+    resetErrors();
 
     let finalCategory = selectedCategoryCard || form.category || "";
     if (finalCategory === "Accessories") finalCategory = "Accessory";
     if (finalCategory === "Receivers") finalCategory = "Receiver";
 
     let finalName = String(form.name).trim();
-    let finalEquipmentTypeId: number | null = null; 
+    let finalEquipmentTypeId: number | null = null;
 
     if (selectedEquipmentType) {
-      const foundType = equipmentTypes.find((e) => String(e.id) === String(selectedEquipmentType));
+      const foundType = equipmentTypes.find(
+        (e) => String(e.id) === String(selectedEquipmentType)
+      );
       if (foundType) {
-        finalName = foundType.name; 
+        finalName = foundType.name;
         finalEquipmentTypeId = Number(foundType.id);
       } else {
-        finalName = selectedEquipmentType; 
-        finalEquipmentTypeId = null; 
+        finalName = selectedEquipmentType;
+        finalEquipmentTypeId = null;
       }
     } else if (form.equipment_type) {
       finalName = form.equipment_type;
@@ -579,14 +653,14 @@ const Tools: React.FC = () => {
 
     const payload: any = {
       name: finalName,
-      code: String(form.code).trim(),
+      code: enteredCode,
       cost: parseFloat(String(form.cost)).toFixed(2),
       stock: Math.max(0, Number(form.stock) || 0),
       description: form.description || "",
       category: finalCategory,
       invoice_number: selectedInvoice || form.invoice_number || "",
       expiry_date: form.expiry_date || null,
-      supplier: form.supplier || null, 
+      supplier: form.supplier || null,
     };
 
     if (finalEquipmentTypeId !== null) {
@@ -595,55 +669,55 @@ const Tools: React.FC = () => {
     }
 
     const allSerials = [
-      String(form.code).trim(),
-      ...(Array.isArray(form.serials) ? form.serials : [])
+      enteredCode,
+      ...(Array.isArray(form.serials) ? form.serials : []),
     ].filter(Boolean);
-    
     payload.serials = allSerials;
     payload.available_serials = allSerials;
 
     if (isEditMode) {
-      const existingTool = tools.find(t => t.id === editingToolId);
+      const existingTool = tools.find((t) => t.id === editingToolId);
       if (existingTool) {
-        payload.available_serials = form.available_serials || existingTool.available_serials || [];
+        payload.available_serials =
+          form.available_serials || existingTool.available_serials || [];
         payload.sold_serials = existingTool.sold_serials || [];
       }
     }
 
     try {
-      let result: any; 
-      
+      let result: any;
+
       if (isEditMode && editingToolId) {
         result = await updateTool(editingToolId, payload);
         const updatedItem = {
-          ...result,
-          name: finalName,
-          equipment_type: finalName,
+          ...result, name: finalName, equipment_type: finalName,
           equipment_type_name: finalName,
-          category: finalCategory === "Accessory" ? "Accessories" : finalCategory
+          category: finalCategory === "Accessory" ? "Accessories" : finalCategory,
         };
-        setTools((prev) => prev.map((t) => (t.id === editingToolId ? updatedItem : t)));
+        setTools((prev) =>
+          prev.map((t) => (t.id === editingToolId ? updatedItem : t))
+        );
       } else {
-        const existing = tools.find((t) => t.code?.toLowerCase() === payload.code.toLowerCase());
+        const existing = tools.find(
+          (t) => t.code?.toLowerCase() === payload.code.toLowerCase()
+        );
         if (existing) {
           const newStock = (existing.stock || 0) + payload.stock;
           result = await updateTool(existing.id, { ...payload, stock: newStock });
           const updatedItem = {
-            ...result,
-            name: finalName,
-            equipment_type: finalName,
+            ...result, name: finalName, equipment_type: finalName,
             equipment_type_name: finalName,
-            category: finalCategory === "Accessory" ? "Accessories" : finalCategory
+            category: finalCategory === "Accessory" ? "Accessories" : finalCategory,
           };
-          setTools((prev) => prev.map((t) => (t.id === existing.id ? updatedItem : t)));
+          setTools((prev) =>
+            prev.map((t) => (t.id === existing.id ? updatedItem : t))
+          );
         } else {
           result = await createTool(payload);
           const newItem = {
-            ...result,
-            name: finalName,
-            equipment_type: finalName,
+            ...result, name: finalName, equipment_type: finalName,
             equipment_type_name: finalName,
-            category: finalCategory === "Accessory" ? "Accessories" : finalCategory
+            category: finalCategory === "Accessory" ? "Accessories" : finalCategory,
           };
           setTools((prev) => [newItem, ...prev]);
         }
@@ -657,12 +731,24 @@ const Tools: React.FC = () => {
       setSelectedCategoryCard(null);
       setSelectedEquipmentType(null);
       setModalStep("select-invoice");
-      
       setToastMessage(`Successfully saved ${finalName}`);
       setShowToast(true);
 
-    } catch (error: any) { 
+    } catch (error: any) {
       const serverErrors = error.response?.data;
+
+      // Backend unique constraint on Tool.code
+      if (
+        serverErrors?.code ||
+        JSON.stringify(serverErrors || "").toLowerCase().includes("already exists")
+      ) {
+        setErrors((prev) => ({
+          ...prev,
+          code: `S/N "${enteredCode}" already exists in the database.`,
+        }));
+        return;
+      }
+
       console.error("❌ Django Rejected:", serverErrors);
       alert("Server Error: " + JSON.stringify(serverErrors || error.message));
     }
@@ -683,7 +769,9 @@ const Tools: React.FC = () => {
   /* ---------------- Filtering & summary ---------------- */
   const filteredTools = tools.filter((t) => {
     const matchesCategory =
-      categoryFilter === "all" || !categoryFilter || (t.category || "").toLowerCase() === categoryFilter.toLowerCase();
+      categoryFilter === "all" ||
+      !categoryFilter ||
+      (t.category || "").toLowerCase() === categoryFilter.toLowerCase();
     const q = searchTerm.trim().toLowerCase();
     const matchesSearch =
       !q ||
@@ -691,63 +779,34 @@ const Tools: React.FC = () => {
       (t.code || "").toLowerCase().includes(q) ||
       ((t.description || "") as string).toLowerCase().includes(q) ||
       (t.equipment_type || "").toLowerCase().includes(q);
-      
-    // --- THIS IS THE FIX ---
-    // Only keep tools in the view if their stock is greater than 0
     const inStock = t.stock > 0;
-
     return matchesCategory && matchesSearch && inStock;
   });
 
-  // Group the filtered tools
   const groupedTools = groupTools(filteredTools);
-
-  // Update summary calculations to use grouped tools
   const totalTools = groupedTools.length;
-  const totalStock = groupedTools.reduce((acc, group) => acc + group.totalStock, 0);
-  const lowStock = groupedTools.filter((group) => group.totalStock <= 5).length;
+  const totalStock = groupedTools.reduce((acc, g) => acc + g.totalStock, 0);
+  const lowStock = groupedTools.filter((g) => g.totalStock <= 5).length;
 
   /* ---------------- PDF Export ---------------- */
   const exportToPDF = () => {
     const doc = new jsPDF();
     doc.setFontSize(16);
     doc.text("Tools Inventory (Grouped)", 14, 20);
-
     const tableData = groupedTools.map((group) => [
-      group.name,
-      group.category,
-      group.equipment_type || "—",
+      group.name, group.category, group.equipment_type || "—",
       group.tools.reduce((acc, t) => acc + (t.available_serials?.length || 0), 0) + " available",
       group.tools.reduce((acc, t) => acc + (t.sold_serials?.length || 0), 0) + " sold",
-      `$${group.cost}`,
-      group.totalStock.toString(),
-      group.supplier_name || "—",
-      group.tools.length + " items",
+      `$${group.cost}`, group.totalStock.toString(),
+      group.supplier_name || "—", group.tools.length + " items",
       group.lastUpdated ? new Date(group.lastUpdated).toLocaleDateString() : "—",
     ]);
-
     autoTable(doc, {
-      head: [
-        [
-          "Name",
-          "Category",
-          "Equipment Type",
-          "Available Serials",
-          "Sold Serials",
-          "Cost (USD)",
-          "Total Stock",
-          "Supplier",
-          "Items",
-          "Last Updated",
-        ],
-      ],
-      body: tableData,
-      startY: 30,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [22, 54, 92] },
-      theme: "grid",
+      head: [["Name", "Category", "Equipment Type", "Available Serials", "Sold Serials",
+        "Cost (USD)", "Total Stock", "Supplier", "Items", "Last Updated"]],
+      body: tableData, startY: 30, styles: { fontSize: 8 },
+      headStyles: { fillColor: [22, 54, 92] }, theme: "grid",
     });
-
     doc.save(`tools-inventory-grouped-${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
@@ -756,7 +815,7 @@ const Tools: React.FC = () => {
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center space-y-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto" />
             <p className="text-gray-400">Loading inventory...</p>
           </div>
         </div>
@@ -767,19 +826,18 @@ const Tools: React.FC = () => {
   /* ---------------- Render ---------------- */
   return (
     <DashboardLayout>
-      {/* Toast Notification */}
       {showToast && (
-        <Toast 
-          message={toastMessage} 
-          onClose={() => {
-            setShowToast(false);
-            setRecentlyAddedId(null);
-          }} 
+        <Toast
+          message={toastMessage}
+          onClose={() => { setShowToast(false); setRecentlyAddedId(null); }}
         />
       )}
 
       {/* View Serial Numbers Dialog */}
-      <Dialog open={viewingSerials.open} onOpenChange={(open) => setViewingSerials(prev => ({ ...prev, open }))}>
+      <Dialog
+        open={viewingSerials.open}
+        onOpenChange={(open) => setViewingSerials((prev) => ({ ...prev, open }))}
+      >
         <DialogContent className="max-w-2xl bg-slate-900 border-slate-700 text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
@@ -808,7 +866,9 @@ const Tools: React.FC = () => {
                         <div>
                           <span className="text-blue-300 font-medium">Sale Date:</span>
                           <p className="text-white">
-                            {serialInfo.date_sold ? new Date(serialInfo.date_sold).toLocaleDateString() : 'Unknown'}
+                            {serialInfo.date_sold
+                              ? new Date(serialInfo.date_sold).toLocaleDateString()
+                              : "Unknown"}
                           </p>
                         </div>
                         <div>
@@ -866,7 +926,6 @@ const Tools: React.FC = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-
           <div className="flex gap-2 items-center">
             <Select value={categoryFilter} onValueChange={(val) => setCategoryFilter(val)}>
               <SelectTrigger className="w-44">
@@ -875,20 +934,14 @@ const Tools: React.FC = () => {
               <SelectContent className="bg-black text-white border-gray-700 rounded-lg">
                 <SelectItem value="all">All Categories</SelectItem>
                 {CATEGORY_OPTIONS.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-
             <Button
               variant="outline"
               className="gap-2"
-              onClick={() => {
-                setSearchTerm("");
-                setCategoryFilter("");
-              }}
+              onClick={() => { setSearchTerm(""); setCategoryFilter(""); }}
             >
               Clear
             </Button>
@@ -920,43 +973,41 @@ const Tools: React.FC = () => {
         {/* Tools Grid */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {groupedTools.map((group) => {
-            const isRecentlyAdded = group.tools.some(tool => tool.id === recentlyAddedId);
+            const isRecentlyAdded = group.tools.some(
+              (tool) => tool.id === recentlyAddedId
+            );
             return (
-              <Card 
-                key={group.id} 
-                className={`
-                  hover:shadow-lg transition-all duration-300 bg-blue-950
-                  ${isRecentlyAdded ? 'ring-2 ring-green-500 shadow-lg scale-105' : ''}
-                `}
+              <Card
+                key={group.id}
+                className={`hover:shadow-lg transition-all duration-300 bg-blue-950 ${isRecentlyAdded ? "ring-2 ring-green-500 shadow-lg scale-105" : ""}`}
               >
                 <CardContent className="p-6 space-y-3">
-                  {/* Recently Added Badge */}
                   {isRecentlyAdded && (
                     <div className="flex justify-between items-center">
                       <div className="bg-green-600 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
-                        <CheckCircle className="h-3 w-3" />
-                        Recently Added
+                        <CheckCircle className="h-3 w-3" /> Recently Added
                       </div>
                     </div>
                   )}
-                  
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">
                       <h3 className="font-semibold text-lg">{group.name}</h3>
                       <p className="text-sm text-gray-400">
-                        {group.category} {group.equipment_type ? `• ${group.equipment_type}` : ''}
+                        {group.category}{group.equipment_type ? ` • ${group.equipment_type}` : ""}
                       </p>
                       <p className="text-xs text-gray-500">
-                        Last Updated: {group.lastUpdated ? new Date(group.lastUpdated).toLocaleDateString() : "—"}
+                        Last Updated:{" "}
+                        {group.lastUpdated
+                          ? new Date(group.lastUpdated).toLocaleDateString()
+                          : "—"}
                       </p>
                       <p className="text-xs text-gray-500">
-                        {group.tools.length} individual item{group.tools.length > 1 ? 's' : ''}
+                        {group.tools.length} individual item{group.tools.length > 1 ? "s" : ""}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <Button
-                        variant="ghost"
-                        size="icon"
+                        variant="ghost" size="icon"
                         onClick={() => viewSerialNumbers(group.latestTool)}
                         className="text-green-400 hover:text-green-300 hover:bg-green-900/30"
                         title="View serial numbers"
@@ -964,27 +1015,21 @@ const Tools: React.FC = () => {
                         <Eye className="h-4 w-4" />
                       </Button>
                       <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          if (group.tools.length > 0) {
-                            openEditModal(group.tools[0]);
-                          }
-                        }}
+                        variant="ghost" size="icon"
+                        onClick={() => { if (group.tools.length > 0) openEditModal(group.tools[0]); }}
                         className="text-slate-400 hover:bg-slate-700"
                         title="Edit"
                       >
                         <Edit2 className="h-4 w-4" />
                       </Button>
                       <Button
-                        variant="ghost"
-                        size="icon"
+                        variant="ghost" size="icon"
                         onClick={() => {
                           if (group.tools.length === 1) {
                             handleDeleteTool(group.tools[0].id);
                           } else {
                             if (window.confirm(`Delete all ${group.tools.length} ${group.name} items?`)) {
-                              group.tools.forEach(tool => handleDeleteTool(tool.id));
+                              group.tools.forEach((tool) => handleDeleteTool(tool.id));
                             }
                           }
                         }}
@@ -995,10 +1040,8 @@ const Tools: React.FC = () => {
                       </Button>
                     </div>
                   </div>
-
                   <div className="pt-3 border-t border-slate-800 flex justify-between items-start">
                     <div>
-                      {/* Show only the latest tool's serial */}
                       {group.latestTool && (
                         <div className="mt-2">
                           <p className="text-xs text-gray-400">Latest Serial</p>
@@ -1008,17 +1051,11 @@ const Tools: React.FC = () => {
                         </div>
                       )}
                     </div>
-
                     <div className="text-right">
                       <p className="text-xs text-gray-400">Cost</p>
                       <p className="text-sm font-bold text-blue-400">${group.cost}</p>
-
                       <p className="text-xs text-gray-400 mt-3">Total Stock</p>
-                      <div
-                        className={`px-2 py-1 rounded-full text-sm font-medium ${
-                          group.totalStock <= 5 ? "bg-amber-600/20 text-amber-300" : "bg-green-600/10 text-green-300"
-                        }`}
-                      >
+                      <div className={`px-2 py-1 rounded-full text-sm font-medium ${group.totalStock <= 5 ? "bg-amber-600/20 text-amber-300" : "bg-green-600/10 text-green-300"}`}>
                         {group.totalStock}
                       </div>
                     </div>
@@ -1030,18 +1067,14 @@ const Tools: React.FC = () => {
         </div>
       </div>
 
-      {/* ---------------- Add/Edit Modal ---------------- */}
+      {/* Add/Edit Modal */}
       <Dialog
         open={open}
         onOpenChange={(val) => {
           if (!val) {
-            setOpen(false);
-            resetForm();
-            setIsEditMode(false);
-            setEditingToolId(null);
-            setSelectedInvoice(null);
-            setSelectedCategoryCard(null);
-            setSelectedEquipmentType(null);
+            setOpen(false); resetForm(); setIsEditMode(false);
+            setEditingToolId(null); setSelectedInvoice(null);
+            setSelectedCategoryCard(null); setSelectedEquipmentType(null);
             setModalStep("select-invoice");
           }
         }}
@@ -1061,15 +1094,13 @@ const Tools: React.FC = () => {
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            {/* STEP 1: Invoice selection */}
+
+            {/* STEP 1: Invoice */}
             {modalStep === "select-invoice" && (
               <div>
                 <Label className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-blue-400" />
-                  Select Invoice
+                  <FileText className="h-5 w-5 text-blue-400" /> Select Invoice
                 </Label>
-                
-                {/* Invoice Search Bar */}
                 <div className="mb-4">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
@@ -1081,7 +1112,6 @@ const Tools: React.FC = () => {
                     />
                   </div>
                 </div>
-
                 <div className="space-y-3 max-h-96 overflow-y-auto overflow-x-hidden">
                   {invoices.length === 0 ? (
                     <div className="text-center py-8 text-gray-400">
@@ -1091,16 +1121,20 @@ const Tools: React.FC = () => {
                     </div>
                   ) : (
                     invoices
-                      .filter(invoice =>
-                        invoice.invoice_number.toLowerCase().includes(invoiceSearchTerm.toLowerCase())
+                      .filter((invoice) =>
+                        invoice.invoice_number
+                          .toLowerCase()
+                          .includes(invoiceSearchTerm.toLowerCase())
                       )
-                      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                      .sort(
+                        (a, b) =>
+                          new Date(b.created_at).getTime() -
+                          new Date(a.created_at).getTime()
+                      )
                       .map((invoice) => (
                         <Card
                           key={invoice.id}
-                          className={`p-3 cursor-pointer hover:scale-[1.02] transform max-w-full ${
-                            selectedInvoice === invoice.invoice_number ? "ring-2 ring-blue-500" : ""
-                          }`}
+                          className={`p-3 cursor-pointer hover:scale-[1.02] transform max-w-full ${selectedInvoice === invoice.invoice_number ? "ring-2 ring-blue-500" : ""}`}
                           onClick={() => {
                             setSelectedInvoice(invoice.invoice_number);
                             fetchEquipmentTypes(invoice.invoice_number);
@@ -1110,7 +1144,9 @@ const Tools: React.FC = () => {
                           <CardContent className="p-0">
                             <div className="flex items-center justify-between">
                               <div className="min-w-0 flex-1">
-                                <div className="text-lg font-semibold truncate">{invoice.invoice_number}</div>
+                                <div className="text-lg font-semibold truncate">
+                                  {invoice.invoice_number}
+                                </div>
                               </div>
                               <FileText className="h-6 w-6 text-blue-400 flex-shrink-0 ml-2" />
                             </div>
@@ -1122,7 +1158,7 @@ const Tools: React.FC = () => {
               </div>
             )}
 
-            {/* STEP 2: Category selection */}
+            {/* STEP 2: Category */}
             {modalStep === "select-category" && (
               <div>
                 <Label className="text-lg font-semibold mb-4">
@@ -1135,20 +1171,17 @@ const Tools: React.FC = () => {
                       className={`p-4 cursor-pointer hover:scale-105 transform ${selectedCategoryCard === cat ? "ring-2 ring-blue-500" : ""}`}
                       onClick={async () => {
                         setSelectedCategoryCard(cat);
-                        
                         const categoryEquipmentTypes = equipmentTypes.filter(
-                          item => item.category === cat && item.invoice_number === selectedInvoice
+                          (item) =>
+                            item.category === cat &&
+                            item.invoice_number === selectedInvoice
                         );
-                        
                         if (categoryEquipmentTypes.length > 0) {
                           setModalStep("select-equipment-type");
                         } else {
-                          setForm((prev: any) => ({ 
-                            ...prev, 
-                            category: cat,
-                            invoice_number: selectedInvoice,
-                            name: "",
-                            cost: ""
+                          setForm((prev: any) => ({
+                            ...prev, category: cat,
+                            invoice_number: selectedInvoice, name: "", cost: "",
                           }));
                           setModalStep("form");
                         }
@@ -1158,7 +1191,12 @@ const Tools: React.FC = () => {
                         <div className="text-lg font-semibold">{cat}</div>
                         <div className="text-xs text-gray-400 mt-1">Add {cat} items</div>
                         <div className="text-xs text-blue-400 mt-1">
-                          {equipmentTypes.filter(item => item.category === cat && item.invoice_number === selectedInvoice).length} types available
+                          {equipmentTypes.filter(
+                            (item) =>
+                              item.category === cat &&
+                              item.invoice_number === selectedInvoice
+                          ).length}{" "}
+                          types available
                         </div>
                       </CardContent>
                     </Card>
@@ -1167,61 +1205,77 @@ const Tools: React.FC = () => {
               </div>
             )}
 
-            {/* STEP 3: Equipment type selection */}
+            {/* STEP 3: Equipment Type */}
             {modalStep === "select-equipment-type" && (
               <div>
-                <Label>Equipment Type for {selectedCategoryCard} (Invoice: {selectedInvoice})</Label>
+                <Label>
+                  Equipment Type for {selectedCategoryCard} (Invoice: {selectedInvoice})
+                </Label>
                 <Select
                   value={selectedEquipmentType ?? ""}
-                  onValueChange={(val) => {
-                    handleEquipmentTypeSelect(val);
-                  }}
+                  onValueChange={(val) => { handleEquipmentTypeSelect(val); }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder={isLoadingEquipmentTypes ? "Loading..." : `Select ${selectedCategoryCard} type`} />
+                    <SelectValue
+                      placeholder={
+                        isLoadingEquipmentTypes
+                          ? "Loading..."
+                          : `Select ${selectedCategoryCard} type`
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent className="bg-black text-white border-gray-700 rounded-lg">
                     {isLoadingEquipmentTypes ? (
-                      <SelectItem value="loading" disabled>
-                        Loading...
+                      <SelectItem value="loading" disabled>Loading...</SelectItem>
+                    ) : equipmentTypes.filter(
+                        (item) =>
+                          item.category === selectedCategoryCard &&
+                          item.invoice_number === selectedInvoice
+                      ).length === 0 ? (
+                      <SelectItem value="manual">
+                        No {selectedCategoryCard} types found in this invoice
                       </SelectItem>
-                    ) : equipmentTypes.filter((item) => item.category === selectedCategoryCard && item.invoice_number === selectedInvoice).length === 0 ? (
-                      <SelectItem value="manual">No {selectedCategoryCard} types found in this invoice</SelectItem>
                     ) : (
                       equipmentTypes
-                        .filter((item) => item.category === selectedCategoryCard && item.invoice_number === selectedInvoice)
+                        .filter(
+                          (item) =>
+                            item.category === selectedCategoryCard &&
+                            item.invoice_number === selectedInvoice
+                        )
                         .map((item) => (
                           <SelectItem key={item.id} value={String(item.id)}>
-                            {item.name} {item.default_cost ? `— $${item.default_cost}` : ""}
+                            {item.name}{item.default_cost ? ` — $${item.default_cost}` : ""}
                           </SelectItem>
                         ))
                     )}
                   </SelectContent>
                 </Select>
-                
-                {!isLoadingEquipmentTypes && equipmentTypes.filter((item) => item.category === selectedCategoryCard && item.invoice_number === selectedInvoice).length === 0 && (
-                  <div className="mt-4 p-3 bg-amber-900/20 border border-amber-700/30 rounded-lg">
-                    <p className="text-amber-400 text-sm mb-2">
-                      No {selectedCategoryCard} types configured for invoice {selectedInvoice}.
-                    </p>
-                    <Button
-                      onClick={() => {
-                        setForm((prev: any) => ({ 
-                          ...prev, 
-                          category: selectedCategoryCard,
-                          invoice_number: selectedInvoice,
-                          name: "",
-                          cost: ""
-                        }));
-                        setModalStep("form");
-                      }}
-                      variant="outline"
-                      className="w-full bg-amber-900/40 border-amber-700 text-amber-300 hover:bg-amber-800/40"
-                    >
-                      Continue with Manual Entry
-                    </Button>
-                  </div>
-                )}
+                {!isLoadingEquipmentTypes &&
+                  equipmentTypes.filter(
+                    (item) =>
+                      item.category === selectedCategoryCard &&
+                      item.invoice_number === selectedInvoice
+                  ).length === 0 && (
+                    <div className="mt-4 p-3 bg-amber-900/20 border border-amber-700/30 rounded-lg">
+                      <p className="text-amber-400 text-sm mb-2">
+                        No {selectedCategoryCard} types configured for invoice{" "}
+                        {selectedInvoice}.
+                      </p>
+                      <Button
+                        onClick={() => {
+                          setForm((prev: any) => ({
+                            ...prev, category: selectedCategoryCard,
+                            invoice_number: selectedInvoice, name: "", cost: "",
+                          }));
+                          setModalStep("form");
+                        }}
+                        variant="outline"
+                        className="w-full bg-amber-900/40 border-amber-700 text-amber-300 hover:bg-amber-800/40"
+                      >
+                        Continue with Manual Entry
+                      </Button>
+                    </div>
+                  )}
               </div>
             )}
 
@@ -1240,8 +1294,7 @@ const Tools: React.FC = () => {
                       </div>
                     </div>
                     <Button
-                      variant="outline"
-                      size="sm"
+                      variant="outline" size="sm"
                       onClick={() => setModalStep("select-invoice")}
                       className="text-xs"
                     >
@@ -1250,30 +1303,36 @@ const Tools: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Name */}
                 <div>
                   <Label>Name</Label>
                   <Input
                     value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    onChange={(e) => {
+                      setForm({ ...form, name: e.target.value });
+                      clearError("name");
+                    }}
                     placeholder="Item name"
-                    className="bg-[#162a52] border-[#2a4375] text-white text-lg font-medium"
+                    className={`bg-[#162a52] border-[#2a4375] text-white text-lg font-medium ${errors.name ? "border-red-500" : ""}`}
                   />
+                  <FieldError message={errors.name} />
                 </div>
 
+                {/* Box Type — Receiver only */}
                 {shouldShowBoxTypeAndExtras && (
                   <div className="mt-4">
                     <Label>Box Type</Label>
                     <Select
                       value={form.description}
-                      onValueChange={(val) =>
+                      onValueChange={(val) => {
                         setForm((prev: any) => ({
-                          ...prev,
-                          description: val,
-                          serials: prev.serials && prev.serials.length ? prev.serials : [],
-                        }))
-                      }
+                          ...prev, description: val, serials: [],
+                        }));
+                        clearError("boxType");
+                        clearError("serialCount");
+                      }}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className={errors.boxType ? "border-red-500" : ""}>
                         <SelectValue placeholder="Select box type" />
                       </SelectTrigger>
                       <SelectContent className="bg-black text-white border-gray-700 rounded-lg">
@@ -1282,61 +1341,89 @@ const Tools: React.FC = () => {
                         <SelectItem value="Base and Rover" className="text-white">Base and Rover</SelectItem>
                       </SelectContent>
                     </Select>
+                    <FieldError message={errors.boxType} />
+                    {form.description && (
+                      <p className="text-xs text-blue-400 mt-1">
+                        {form.description === "Base and Rover"
+                          ? "Base and Rover requires 4 serial numbers total (main + 3 extras)"
+                          : `${form.description} requires 2 serial numbers total (main + 1 extra)`}
+                      </p>
+                    )}
                   </div>
                 )}
 
+                {/* Main Serial + Extras */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <Label>Serial</Label>
                     <div className="flex items-center gap-2">
                       <Input
                         value={form.code}
-                        onChange={(e) => setForm({ ...form, code: e.target.value })}
+                        onChange={(e) => {
+                          setForm({ ...form, code: e.target.value });
+                          clearError("code");
+                        }}
                         placeholder="e.g. TL-001"
-                        className="flex-1"
+                        className={`flex-1 ${errors.code ? "border-red-500" : ""}`}
                         required
                       />
                       {shouldShowBoxTypeAndExtras && allowedExtraLabels.length > 0 && (
                         <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
+                          type="button" variant="outline" size="sm"
                           onClick={addExtraSerial}
                           className="flex items-center gap-2"
                           disabled={!canAddExtra()}
+                          title={
+                            !form.description
+                              ? "Select a Box Type first"
+                              : !canAddExtra()
+                              ? `Max serials reached for ${form.description}`
+                              : "Add extra serial"
+                          }
                         >
                           <Plus className="h-4 w-4" /> Add
                         </Button>
                       )}
                     </div>
+                    <FieldError message={errors.code} />
+                    <FieldError message={errors.serialCount} />
 
-                    {shouldShowBoxTypeAndExtras && form.serials && form.serials.length > 0 && (
-                      <div className="mt-3 space-y-2">
-                        {form.serials.map((serial: string, idx: number) => {
-                          const label = allowedExtraLabels[idx] ?? `Extra ${idx + 1}`;
-                          return (
-                            <div key={idx} className="flex items-center gap-2">
-                              <div className="min-w-[110px] text-xs text-slate-300 bg-slate-800 rounded-md px-2 py-2">
-                                {label}
+                    {/* Extra serial inputs */}
+                    {shouldShowBoxTypeAndExtras &&
+                      form.serials &&
+                      form.serials.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          {form.serials.map((serial: string, idx: number) => {
+                            const label =
+                              allowedExtraLabels[idx] ?? `Extra ${idx + 1}`;
+                            return (
+                              <div key={idx}>
+                                <div className="flex items-center gap-2">
+                                  <div className="min-w-[110px] text-xs text-slate-300 bg-slate-800 rounded-md px-2 py-2">
+                                    {label}
+                                  </div>
+                                  <Input
+                                    value={serial}
+                                    onChange={(e) =>
+                                      setExtraSerialValue(idx, e.target.value)
+                                    }
+                                    placeholder={`${label} serial number`}
+                                    className={errors.serials?.[idx] ? "border-red-500" : ""}
+                                  />
+                                  <Button
+                                    variant="ghost" size="icon"
+                                    onClick={() => removeExtraSerial(idx)}
+                                    className="text-red-400 hover:text-red-600"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                                <FieldError message={errors.serials?.[idx]} />
                               </div>
-                              <Input
-                                value={serial}
-                                onChange={(e) => setExtraSerialValue(idx, e.target.value)}
-                                placeholder={`${label} serial number`}
-                              />
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => removeExtraSerial(idx)}
-                                className="text-red-400 hover:text-red-600"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                            );
+                          })}
+                        </div>
+                      )}
                   </div>
 
                   {!selectedCategoryCard && (
@@ -1346,13 +1433,13 @@ const Tools: React.FC = () => {
                         value={form.category}
                         onValueChange={(val) => {
                           setForm((prev: any) => ({
-                            ...prev,
-                            category: val,
-                            ...(val !== "Receiver" ? { description: "", serials: [], equipment_type_id: "", equipment_type: "" } : {}),
+                            ...prev, category: val,
+                            ...(val !== "Receiver"
+                              ? { description: "", serials: [], equipment_type_id: "", equipment_type: "" }
+                              : {}),
                           }));
-                          if (val === "Receiver") {
+                          if (val === "Receiver")
                             fetchEquipmentTypes(selectedInvoice || "");
-                          }
                         }}
                       >
                         <SelectTrigger>
@@ -1375,59 +1462,78 @@ const Tools: React.FC = () => {
                     <Label>Equipment Type (autofill name & cost)</Label>
                     <Select
                       value={form.equipment_type_id || form.equipment_type}
-                      onValueChange={(val) => {
-                        handleEquipmentTypeSelect(val);
-                      }}
+                      onValueChange={(val) => { handleEquipmentTypeSelect(val); }}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder={isLoadingEquipmentTypes ? "Loading..." : "Select equipment type"} />
+                        <SelectValue
+                          placeholder={
+                            isLoadingEquipmentTypes
+                              ? "Loading..."
+                              : "Select equipment type"
+                          }
+                        />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none" disabled>
-                          -- Select type --
-                        </SelectItem>
-
+                        <SelectItem value="none" disabled>-- Select type --</SelectItem>
                         {equipmentTypes.length === 0 && !isLoadingEquipmentTypes && (
                           <SelectItem value="manual">Manual / No types</SelectItem>
                         )}
-
                         {equipmentTypes
-                          .filter((item) => item.category === form.category && item.invoice_number === selectedInvoice)
+                          .filter(
+                            (item) =>
+                              item.category === form.category &&
+                              item.invoice_number === selectedInvoice
+                          )
                           .map((item) => (
                             <SelectItem key={item.id} value={String(item.id)}>
-                              {item.name} {item.default_cost ? `— $${item.default_cost}` : ""}
+                              {item.name}
+                              {item.default_cost ? ` — $${item.default_cost}` : ""}
                             </SelectItem>
                           ))}
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-gray-400 mt-1">Cost is autofilled from admin settings but remains editable.</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Cost is autofilled from admin settings but remains editable.
+                    </p>
                   </div>
                 )}
 
-                <div className="space-y-2">
-                  <Label htmlFor="cost-usd" className="text-blue-200 flex items-center gap-2">
+                {/* Cost */}
+                <div>
+                  <Label
+                    htmlFor="cost-usd"
+                    className="text-blue-200 flex items-center gap-2"
+                  >
                     <span>Cost in USD</span>
-                    <span className="text-xs text-green-400 bg-green-900/30 px-2 py-1 rounded">$</span>
+                    <span className="text-xs text-green-400 bg-green-900/30 px-2 py-1 rounded">
+                      $
+                    </span>
                   </Label>
                   <Input
-                    id="cost-usd"
-                    type="number"
-                    step="0.01"
+                    id="cost-usd" type="number" step="0.01"
                     value={form.cost}
-                    onChange={(e) => setForm({ ...form, cost: e.target.value })}
+                    onChange={(e) => {
+                      setForm({ ...form, cost: e.target.value });
+                      clearError("cost");
+                    }}
                     placeholder="100.00"
-                    className="bg-[#162a52] border-[#2a4375] text-white text-lg font-medium"
+                    className={`bg-[#162a52] border-[#2a4375] text-white text-lg font-medium ${errors.cost ? "border-red-500" : ""}`}
                   />
+                  <FieldError message={errors.cost} />
                 </div>
 
+                {/* Supplier + Invoice */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <Label>Supplier</Label>
                     <Select
                       value={String(form.supplier || "")}
-                      onValueChange={(val) => setForm({ ...form, supplier: val })}
+                      onValueChange={(val) => {
+                        setForm({ ...form, supplier: val });
+                        clearError("supplier");
+                      }}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className={errors.supplier ? "border-red-500" : ""}>
                         <SelectValue placeholder="Select supplier" />
                       </SelectTrigger>
                       <SelectContent className="bg-black text-white max-h-60 overflow-y-auto">
@@ -1435,57 +1541,57 @@ const Tools: React.FC = () => {
                           <SelectItem value="" disabled>Loading suppliers...</SelectItem>
                         ) : suppliers.length > 0 ? (
                           suppliers.map((s) => (
-                            <SelectItem key={s.id} value={s.id.toString()} className="text-white">
+                            <SelectItem
+                              key={s.id} value={s.id.toString()} className="text-white"
+                            >
                               {s.name}
                             </SelectItem>
                           ))
                         ) : (
-                          <SelectItem value="No Suppliers" disabled>No suppliers found</SelectItem>
+                          <SelectItem value="No Suppliers" disabled>
+                            No suppliers found
+                          </SelectItem>
                         )}
                       </SelectContent>
                     </Select>
+                    {/* Supplier error directly below supplier dropdown */}
+                    <FieldError message={errors.supplier} />
                   </div>
 
                   <div className="opacity-70">
                     <Label>Invoice Number (Auto-filled)</Label>
-                    <Input 
-                      value={selectedInvoice || ""} 
+                    <Input
+                      value={selectedInvoice || ""}
                       readOnly
                       className="bg-gray-800"
                     />
                   </div>
                 </div>
 
-                {/* <div>
-                  <Label>Expiry Date</Label>
-                  <Input
-                    type="date"
-                    value={form.expiry_date}
-                    onChange={(e) => setForm({ ...form, expiry_date: e.target.value })}
-                    className="bg-[#162a52] border-[#2a4375] text-white"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">
-                    Optional: Set the expiration date for this item (e.g., warranty, calibration expiry)
-                  </p>
-                </div> */}
-
-                {isEditMode && form.available_serials && form.available_serials.length > 0 && (
-                  <div>
-                    <Label>Available Serial Numbers ({form.available_serials.length})</Label>
-                    <div className="bg-slate-800 p-3 rounded border border-slate-600 max-h-32 overflow-y-auto">
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        {form.available_serials.map((serial: string, index: number) => (
-                          <div key={index} className="font-mono text-green-400">
-                            {serial}
-                          </div>
-                        ))}
+                {isEditMode &&
+                  form.available_serials &&
+                  form.available_serials.length > 0 && (
+                    <div>
+                      <Label>
+                        Available Serial Numbers ({form.available_serials.length})
+                      </Label>
+                      <div className="bg-slate-800 p-3 rounded border border-slate-600 max-h-32 overflow-y-auto">
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          {form.available_serials.map(
+                            (serial: string, index: number) => (
+                              <div key={index} className="font-mono text-green-400">
+                                {serial}
+                              </div>
+                            )
+                          )}
+                        </div>
                       </div>
+                      <p className="text-xs text-gray-400 mt-1">
+                        These serial numbers are available for sale. When sold, they
+                        will be moved to sold serials.
+                      </p>
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">
-                      These serial numbers are available for sale. When sold, they will be moved to sold serials.
-                    </p>
-                  </div>
-                )}
+                  )}
               </>
             )}
           </div>
@@ -1497,8 +1603,16 @@ const Tools: React.FC = () => {
                   variant="outline"
                   onClick={() => {
                     if (modalStep === "form") {
-                      if ((selectedCategoryCard === "Receiver" || form.category === "Receiver") && selectedCategoryCard) {
-                        setModalStep(selectedCategoryCard === "Receiver" ? "select-equipment-type" : "select-category");
+                      if (
+                        (selectedCategoryCard === "Receiver" ||
+                          form.category === "Receiver") &&
+                        selectedCategoryCard
+                      ) {
+                        setModalStep(
+                          selectedCategoryCard === "Receiver"
+                            ? "select-equipment-type"
+                            : "select-category"
+                        );
                       } else {
                         setModalStep("select-category");
                         setSelectedCategoryCard(null);
@@ -1515,7 +1629,6 @@ const Tools: React.FC = () => {
                   ← Back
                 </Button>
               )}
-
               {modalStep === "form" && (
                 <Button
                   onClick={handleSaveTool}
@@ -1524,16 +1637,11 @@ const Tools: React.FC = () => {
                   {isEditMode ? "Save Changes" : "Add Item"}
                 </Button>
               )}
-
               <Button
                 onClick={() => {
-                  setOpen(false);
-                  resetForm();
-                  setIsEditMode(false);
-                  setEditingToolId(null);
-                  setSelectedInvoice(null);
-                  setSelectedCategoryCard(null);
-                  setSelectedEquipmentType(null);
+                  setOpen(false); resetForm(); setIsEditMode(false);
+                  setEditingToolId(null); setSelectedInvoice(null);
+                  setSelectedCategoryCard(null); setSelectedEquipmentType(null);
                   setModalStep("select-invoice");
                 }}
                 variant="outline"

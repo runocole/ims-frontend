@@ -140,6 +140,8 @@ const DashboardPage = () => {
             icon={DollarSign}
             actionIcon={showRevenue ? EyeOff : Eye}
             onActionClick={() => setShowRevenue(!showRevenue)}
+            onClick={() => navigate("/revenue-history")}  // ← add this
+            clickable  // ← add this
           />
           <StatsCard title="Total Users" value={dashboardData?.totalStaff || 0} icon={AlertCircle} />
           <StatsCard 
@@ -276,7 +278,8 @@ const DashboardPage = () => {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(value: number, _name: string) => {
+                      formatter={(value: number | undefined, _name: string | undefined) => {
+                        if (value === undefined) return ['N/A', 'Count'];
                         const total = (dashboardData?.inventoryBreakdown || []).reduce(
                           (sum: number, item: any) => sum + item.count,
                           0

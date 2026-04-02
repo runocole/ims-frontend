@@ -12,17 +12,20 @@ const Tools = lazy(() => import("./pages/Tools"));
 const Payments = lazy(() => import("./pages/Payments"));
 const CustomerPayments = lazy(() => import("./pages/CustomerPayments"));
 const StaffPage = lazy(() => import("./pages/StaffPage"));
+const StaffSalesPage = lazy(() => import("./pages/StaffSalesPage"));
+const StaffDirectoryPage = lazy(() => import("./pages/StaffDirectoryPage"));
+const StaffSalesDetailPage = lazy(() => import("./pages/StaffSalesDetailPage"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Login = lazy(() => import("./pages/Login"));
 const SalesPage = lazy(() => import("./pages/Sales"));
 const InvoicePage = lazy(() => import("./pages/InvoicePage")); 
 const AdminDashboard = lazy(() => import("./pages/DashboardPage"));
+const MonthlyRevenuePage = lazy(() => import("./pages/MonthlyRevenuePage"));
 const CustomersPage = lazy(() => import("./pages/CustomersPage"));
 const ToolsSummary = lazy(() => import("./pages/ToolsSummary"));
 const AdminSalesPage = lazy(() => import("./pages/AdminSalesPage"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const CustomerOwing = lazy(() => import("./pages/CustomerOwing"));
-const StaffSalesPage = lazy(() => import("./pages/StaffSalesPage"));
 const BuyNow = lazy(() => import("./pages/BuyNow"));
 const Contact = lazy(() => import("./pages/Contact"));
 const About = lazy(() => import("./pages/About"));
@@ -171,6 +174,9 @@ const App = () => {
                     
                     <Route path="/dashboard" element={<PrivateRoute element={<AdminDashboard />} allowedRoles={["admin"]} />} />
                     <Route path="/admin/sales" element={<PrivateRoute element={<AdminSalesPage />} allowedRoles={["admin"]} />} />
+                    <Route path="/staff-directory" element={<PrivateRoute element={<StaffDirectoryPage />} allowedRoles={["admin"]} />} />
+                    <Route path="/sales/staff/:staffName" element={<PrivateRoute element={<StaffSalesDetailPage />} allowedRoles={["admin"]} />} />
+                    <Route path="/revenue-history" element={<PrivateRoute element={<MonthlyRevenuePage />} allowedRoles={["admin"]} />} />
 
                     <Route path="/customer/dashboard" element={<PrivateRoute element={<CustomerDashboard />} allowedRoles={["customer"]} />} />
                     <Route path="/customer/payments" element={<PrivateRoute element={<CustomerPayments />} allowedRoles={["customer"]} />} />

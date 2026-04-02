@@ -178,8 +178,17 @@ export default function SalesPage() {
         //expiry_date: saleDetails.expiry_date || null,
         due_date: calculatedDueDate,
         date_sold: new Date().toISOString().split('T')[0],
-        payment_status: (saleDetails.payment_plan?.toLowerCase() === "installment" || parseFloat(saleDetails.initial_deposit || "0") > 0) ? "ongoing" : "pending",
-      };
+        payment_status: (() => {
+          const deposit = parseFloat(saleDetails.initial_deposit || "0");
+          const total = totalCost;
+          // Fully paid upfront — no payment plan, deposit covers full amount
+          if (deposit >= total && total > 0) return "completed";
+          // Has installment plan or partial deposit — ongoing
+          if (saleDetails.payment_plan?.toLowerCase() === "installment" || deposit > 0) return "ongoing";
+          // No payment info at all
+          return "pending";
+        })(),
+     };
 
       const res = await api.createSale(payload);
       addSale(res.data); 

@@ -27,7 +27,14 @@ const DashboardPage = () => {
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showRevenue, setShowRevenue] = useState(false);
-
+  const userRole = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user") || "{}").role || "";
+    } catch {
+      return "";
+    }
+  })();
+  const isAdmin = userRole === "admin";
   const COLORS = ["#4F46E5", "#10B981", "#F59E0B", "#EF4444", "#6366F1", "#A855F7"];
 
   useEffect(() => {
@@ -139,13 +146,16 @@ const DashboardPage = () => {
             value={showRevenue ? formatCurrency(dashboardData?.mtdRevenue || 0) : "******"} 
             icon={DollarSign}
             actionIcon={showRevenue ? EyeOff : Eye}
-            onActionClick={() => setShowRevenue(!showRevenue)}
+            onActionClick={() => {
+              if (!isAdmin) return; // staff can't reveal revenue
+              setShowRevenue(!showRevenue);
+            }}
           />
           <StatsCard title="Total Users" value={dashboardData?.totalStaff || 0} icon={AlertCircle} />
           <StatsCard 
             title="Active Customers"
             value={dashboardData?.activeCustomers || 0} icon={Users}
-            onClick={() => navigate("/customer/owing")}
+            onClick={() => navigate("/customer/receivables")}
             clickable
            />
         </div>

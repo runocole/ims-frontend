@@ -149,10 +149,23 @@ const PurchasesPage: React.FC = () => {
   // Calculations
   const safeParseAmount = (val: any) => parseFloat(val?.toString().replace(/,/g, "") || "0");
   const initialDeposit = parseFloat(invoiceDetail?.initial_deposit || "0");
-  const totalSubsequentPayments = invoicePayments.reduce((acc: number, p: any) => acc + parseFloat(p.amount || "0"), 0);
-  const totalPaid = initialDeposit + totalSubsequentPayments;
-  const totalCost = parseFloat(invoiceDetail?.total_cost || "0");
-  const currentBalance = totalCost - totalPaid;
+const totalSubsequentPayments = invoicePayments.reduce(
+  (acc: number, p: any) => acc + parseFloat(p.amount || "0"), 0
+);
+const totalCost = parseFloat(invoiceDetail?.total_cost || "0");
+const isMarkedCompleted = ["completed", "paid", "fully-paid"].includes(
+  (invoiceDetail?.payment_status || "").toLowerCase()
+);
+
+// If sale is marked completed but no deposit or payments recorded,
+// treat the full amount as paid (upfront full payment with no deposit logged)
+const totalPaid = (() => {
+  const recorded = initialDeposit + totalSubsequentPayments;
+  if (isMarkedCompleted && recorded === 0) return totalCost;
+  return recorded;
+})();
+
+const currentBalance = isMarkedCompleted ? 0 : Math.max(totalCost - totalPaid, 0);
 
   // --- UPDATE INVOICE DETAILS ---
   const handleUpdateInvoice = async () => {
@@ -240,11 +253,26 @@ const PurchasesPage: React.FC = () => {
 
           if (patchRes.ok) {
             if (newInvoiceStatus === "completed") {
-              toast.success("Balance cleared! Invoice marked as Completed.");
-            } else {
-              toast.success("Payment logged! Invoice marked as Ongoing.");
-            }
-            setInvoiceDetail((prev: any) => prev ? { ...prev, payment_status: newInvoiceStatus } : prev);
+  toast.success("Balance cleared! Invoice marked as Completed.");
+} else {
+  toast.success("Payment logged! Invoice marked as Ongoing.");
+}
+setInvoiceDetail((prev: any) => prev ? { ...prev, payment_status: newInvoiceStatus } : prev);
+
+// ✅ Auto-sync customer financials so CustomerOwingPage
+// reflects this payment immediately without manual sync
+try {
+  await fetch(`${API_BASE_URL}/customers/sync-financials/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    },
+  });
+} catch (syncErr) {
+  // Sync failure is silent — payment was already saved successfully
+  console.warn("Background sync failed:", syncErr);
+}
           } else {
             console.error("Failed to patch invoice status. Make sure 'ongoing' is in Django choices.");
             toast.success("Payment saved, but failed to update invoice status.");
