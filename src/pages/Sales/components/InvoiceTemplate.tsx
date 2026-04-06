@@ -30,7 +30,7 @@ export const InvoiceTemplate = ({ data }: InvoiceProps) => {
       <div className="flex justify-between items-start border-b pb-8 border-gray-200">
         <div>
           <img src={logo} alt="OTIC" className="h-12 mb-4" /> 
-          <h1 className="text-xl font-bold text-blue-900">OTIC SURVEYS LTD</h1> 
+          <h1 className="text-xl font-bold text-blue-900">OTIC GEOSYSTEMS LTD</h1> 
           <p className="text-sm text-gray-600">3, Bello Close, Chevyview Estate, Chevron Drive</p> 
           <p className="text-sm text-gray-600">Lekki-Epe Expressway, Lagos, Nigeria</p> 
         </div>
@@ -109,7 +109,7 @@ export const InvoiceTemplate = ({ data }: InvoiceProps) => {
         <p className="font-bold text-gray-700 mb-2 uppercase tracking-wider">Notes</p> 
         <p>Kindly pay into this account below and send proof of payment.</p> 
         <p className="mt-1"><span className="font-semibold text-gray-700">Bank:</span> Zenith Bank</p> 
-        <p><span className="font-semibold text-gray-700">Account Name:</span> OTIC SURVEYS</p> 
+        <p><span className="font-semibold text-gray-700">Account Name:</span> OTIC GEOSYSTEMS LTD</p> 
         <p><span className="font-semibold text-gray-700">Account NO:</span> 1015175251</p> 
         <p className="mt-4 italic">Thank you for your patronage.</p> 
         <p className="mt-2 font-medium">TIN NO. 31413107-0001</p> 

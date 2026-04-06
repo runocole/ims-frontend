@@ -28,7 +28,6 @@ const isStatusOngoing = (status: string) =>
   STATUS_ONGOING_VARIANTS.includes((status || "").toLowerCase().trim());
 
 // Maps DB status to display label
-// on-track and due-soon both display as "Ongoing"
 const getStatusLabel = (status: string) => {
   const s = (status || "").toLowerCase().trim();
   if (s === "overdue")                         return "Overdue";
@@ -43,7 +42,7 @@ const getStatusTextColor = (status: string) => {
   const s = (status || "").toLowerCase().trim();
   if (s === "overdue")                                        return "text-red-400";
   if (s === "fully-paid" || s === "completed" || s === "paid") return "text-green-400";
-  return "text-blue-400"; // ongoing / on-track / due-soon
+  return "text-blue-400"; 
 };
 
 const getStatusIconColor = (status: string) => {
@@ -99,8 +98,6 @@ const CustomerDashboard = () => {
 
         // ------------------------------
         // FINANCIALS
-        // fetchCustomerOwingData returns { summary, customers[] }
-        // Match logged-in customer by phone (primary), email, then name
         // ------------------------------
         const customersList: any[] = financialData?.customers || [];
 
@@ -117,8 +114,6 @@ const CustomerDashboard = () => {
           const owed     = parseFloat(myRecord.amountLeft        ?? 0);
           const rawStatus = myRecord.status ?? "on-track";
 
-          // If no financial record found in owing API (fully paid customers
-          // are excluded from CustomerOwingDataView), still show their data
           const progress = total > 0 ? Math.min((paid / total) * 100, 100) : 100;
 
           setFinancials({
@@ -129,7 +124,6 @@ const CustomerDashboard = () => {
             progress,
           });
         } else {
-          // Customer not in owing list — either fully paid or no sales yet
           setFinancials({
             totalSellingPrice: 0,
             amountPaid:        0,
@@ -140,7 +134,7 @@ const CustomerDashboard = () => {
         }
 
         // ------------------------------
-        // EQUIPMENT — find this customer's sales
+        // EQUIPMENT 
         // ------------------------------
         const allSales = salesData?.results || salesData || [];
 
@@ -178,8 +172,8 @@ const CustomerDashboard = () => {
               itemSerials = [cleanString(item.serial_number)];
             }
 
-            // Match to batch code entry
-            const matchedBatchItem = myBatchItems.find((b: any) => {
+            // Find ALL matching batch items to extract all activation codes
+            const allMatchedBatchItems = myBatchItems.filter((b: any) => {
               const batchSerial  = cleanString(b.serial);
               const batchInvoice = cleanString(b.invoice);
               return (
@@ -188,27 +182,30 @@ const CustomerDashboard = () => {
               );
             });
 
+            // Extract all valid codes and remove duplicates
+            const extractedCodes = allMatchedBatchItems
+              .map((b: any) => b.current_code)
+              .filter((code: any) => code && typeof code === 'string' && code.trim() !== "");
+            const uniqueCodes = [...new Set(extractedCodes)];
+
+            // Match first batch item to keep existing status logic perfectly intact
+            const matchedBatchItem = allMatchedBatchItems[0];
+
             let batchStatus = "";
-            let rawCode     = null;
             let expiryDate  = null;
 
             if (matchedBatchItem) {
               batchStatus = (matchedBatchItem.payment_status || "").toLowerCase().trim();
-              rawCode     = matchedBatchItem.current_code;
               expiryDate  = matchedBatchItem.duration || matchedBatchItem.expiry || null;
             }
 
             // ------------------------------
-            // OVERDUE: batch says overdue OR sale says overdue
-            // Either one is enough to lock the code
+            // OVERDUE / FULLY PAID LOGIC
             // ------------------------------
             const isOverdue =
               isStatusOverdue(batchStatus) ||
               isStatusOverdue(saleLevelStatus);
 
-            // ------------------------------
-            // FULLY PAID: not overdue AND (batch paid OR sale completed)
-            // ------------------------------
             const isBatchPaid = matchedBatchItem ? isStatusPaid(batchStatus) : false;
             const isSalePaid  = isStatusPaid(saleLevelStatus);
             const isFullyPaid = !isOverdue && (isBatchPaid || isSalePaid);
@@ -216,13 +213,13 @@ const CustomerDashboard = () => {
             allEquipment.push({
               invoice:        sale.invoice_number || sale.id,
               tool_name:      item.equipment || item.name || "Equipment",
-              serial:         item.serial_number,
+              serial:         item.serial_number, // Kept for safety
+              serials_array:  itemSerials.length > 0 ? itemSerials : [cleanString(item.serial_number)], // For chip display
               category:       item.category || "Tool",
               payment_status: isOverdue ? "overdue" : isFullyPaid ? "paid" : saleLevelStatus,
               is_overdue:     isOverdue,
               is_fully_paid:  isFullyPaid,
-              // Code only shows when fully paid AND not overdue
-              current_code:   isOverdue || !isFullyPaid ? null : rawCode,
+              current_codes:  isOverdue || !isFullyPaid ? [] : uniqueCodes, // Multiple codes support
               expiry:         expiryDate,
             });
           });
@@ -236,15 +233,18 @@ const CustomerDashboard = () => {
               const batchStatus = (item.payment_status || "").toLowerCase();
               const isOverdue   = isStatusOverdue(batchStatus);
               const isFullyPaid = !isOverdue && isStatusPaid(batchStatus);
+              const validCode   = item.current_code && item.current_code.trim() !== "" ? [item.current_code] : [];
+
               return {
                 invoice:        item.invoice || "N/A",
                 tool_name:      item.tool_name || "Equipment",
                 serial:         item.serial,
+                serials_array:  [cleanString(item.serial)], // For chip display
                 category:       "Receiver",
                 payment_status: isOverdue ? "overdue" : "paid",
                 is_overdue:     isOverdue,
                 is_fully_paid:  isFullyPaid,
-                current_code:   isOverdue || !isFullyPaid ? null : item.current_code,
+                current_codes:  isOverdue || !isFullyPaid ? [] : validCode,
                 expiry:         item.duration || item.expiry || null,
               };
             });
@@ -411,25 +411,33 @@ const CustomerDashboard = () => {
                 </CardHeader>
 
                 <CardContent className="pt-4 space-y-4">
-                  {/* Serial Number */}
+                  
+                  {/* NEW UI: Serial Numbers as Chips */}
                   <div>
-                    <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">
-                      Serial Number
+                    <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
+                      Serial Number(s)
                     </p>
-                    <p className="font-mono text-sm text-white bg-slate-900/50 p-2 rounded border border-slate-800 break-all">
-                      {item.serial}
-                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {item.serials_array.map((serialNum: string, idx: number) => (
+                        <span 
+                          key={idx} 
+                          className="font-mono text-xs text-blue-200 bg-[#1b2d55] px-2 py-1.5 rounded-md border border-blue-800/40"
+                        >
+                          {serialNum.toUpperCase()}
+                        </span>
+                      ))}
+                    </div>
                   </div>
 
-                  {/* Activation Code */}
+                  {/* NEW UI: Multiple Activation Codes */}
                   <div className={`p-3 rounded-lg border ${
                     item.is_overdue
                       ? "bg-red-950/20 border-red-900/40"
                       : item.is_fully_paid
-                      ? "bg-green-950/30 border-green-900/50"
+                      ? "bg-green-950/20 border-green-900/40"
                       : "bg-yellow-950/10 border-yellow-900/30"
                   }`}>
-                    <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
+                    <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-3">
                       Activation Code(s)
                     </p>
 
@@ -444,20 +452,30 @@ const CustomerDashboard = () => {
                         </p>
                       </div>
                     ) : item.is_fully_paid ? (
-                      // FULLY PAID — show code
-                      <div className="flex justify-between items-center">
-                        <code className="text-md font-mono text-green-400 tracking-wider">
-                          {item.current_code ? item.current_code : "PENDING GENERATION"}
+                      // FULLY PAID — show list of all codes
+                      item.current_codes && item.current_codes.length > 0 ? (
+                        <div className="space-y-2">
+                          {item.current_codes.map((code: string, idx: number) => (
+                            <div key={idx} className="flex justify-between items-center bg-slate-900/40 p-2 rounded border border-slate-800">
+                              <code className="text-sm md:text-md font-mono text-green-400 tracking-wider break-all mr-2">
+                                {code}
+                              </code>
+                              <button
+                                className="text-slate-400 hover:text-white flex-shrink-0 transition-colors"
+                                onClick={() => navigator.clipboard.writeText(code)}
+                                title="Copy Code"
+                              >
+                                <Copy className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        // Edge case: Paid, but no code generated yet
+                        <code className="text-md font-mono text-green-400 tracking-wider block text-center py-2">
+                          PENDING GENERATION
                         </code>
-                        {item.current_code && (
-                          <button
-                            className="text-slate-400 hover:text-white ml-2 flex-shrink-0"
-                            onClick={() => navigator.clipboard.writeText(item.current_code)}
-                          >
-                            <Copy className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
+                      )
                     ) : (
                       // ONGOING — locked until fully paid
                       <div className="text-center py-2">
@@ -471,7 +489,7 @@ const CustomerDashboard = () => {
                     )}
                   </div>
 
-                  <div className="pt-2 text-xs text-slate-500 border-t border-slate-800">
+                  <div className="pt-2 text-xs text-slate-500 border-t border-slate-800/50">
                     Invoice Reference: {item.invoice}
                   </div>
                 </CardContent>

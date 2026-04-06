@@ -5,7 +5,7 @@ import { StatsCard } from "../components/StatsCard";
 import {
   DollarSign, TrendingUp, Clock, AlertCircle,
   Users, Send, ArrowLeft, RefreshCw,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Eye, EyeOff
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import {
@@ -106,6 +106,13 @@ const CustomerOwingPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const hasSyncedRef = useRef(false);
+
+  const isAdmin = (() => {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "{}").role === "admin";
+  } catch { return false; }
+})();
+const [showRevenue, setShowRevenue] = useState(false);
 
   // ------------------------------
   // SYNC
@@ -292,8 +299,12 @@ const CustomerOwingPage = () => {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <StatsCard
             title="Total Revenue"
-            value={formatCurrency(customerData?.summary?.totalSellingPrice || 0)}
+            value={isAdmin && showRevenue
+              ? formatCurrency(customerData?.summary?.totalSellingPrice || 0)
+              : "₦ ••••••"}
             icon={DollarSign}
+            actionIcon={isAdmin ? (showRevenue ? EyeOff : Eye) : undefined}
+            onActionClick={isAdmin ? () => setShowRevenue(!showRevenue) : undefined}
           />
           <StatsCard
             title="Total Collections"

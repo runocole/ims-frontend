@@ -147,14 +147,44 @@ const SalesTable = ({
                               </span>
                             </td>
                             <td className="p-3">
-                              {sale.items?.map((item, idx) => (
-                                <div key={idx} className="mb-1">
-                                  <span className="text-xs block">{item.equipment}</span>
-                                  <span className={`text-[9px] px-1 rounded border ${getBadgeStyle(item.equipment_type)}`}>
-                                    {item.equipment_type}
-                                  </span>
-                                </div>
-                              ))}
+                              {(() => {
+                                // Group items by equipment name + type
+                                const grouped = (sale.items || []).reduce((acc: Record<string, {
+                                  equipment: string;
+                                  equipment_type: string;
+                                  count: number;
+                                }>, item) => {
+                                  const key = `${item.equipment}__${item.equipment_type || ""}`;
+                                  if (acc[key]) {
+                                    acc[key].count += 1;
+                                  } else {
+                                    acc[key] = {
+                                      equipment: item.equipment,
+                                      equipment_type: item.equipment_type || "",
+                                      count: 1,
+                                    };
+                                  }
+                                  return acc;
+                                }, {});
+
+                                return Object.values(grouped).map((group, idx) => (
+                                  <div key={idx} className="mb-1">
+                                    <span className="text-xs block text-white">
+                                      {group.equipment}
+                                      {group.count > 1 && (
+                                        <span className="ml-1.5 px-1.5 py-0.5 bg-blue-700/50 text-blue-300 rounded text-[9px] font-bold">
+                                          ×{group.count}
+                                        </span>
+                                      )}
+                                    </span>
+                                    {group.equipment_type && (
+                                      <span className={`text-[9px] px-1 rounded border ${getBadgeStyle(group.equipment_type)}`}>
+                                        {group.equipment_type}
+                                      </span>
+                                    )}
+                                  </div>
+                                ));
+                              })()}
                             </td>
                             <td className="p-3 font-bold text-green-400">
                               ₦{parseFloat(sale.total_cost || "0").toLocaleString()}

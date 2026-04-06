@@ -147,7 +147,7 @@ const DashboardPage = () => {
           <StatsCard 
             title="Active Customers"
             value={dashboardData?.activeCustomers || 0} icon={Users}
-            onClick={() => navigate("/customer/owing")}
+            onClick={() => navigate("/customer/receivables")}
             clickable
            />
         </div>

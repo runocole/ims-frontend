@@ -41,6 +41,7 @@ const ProductDetailPage = lazy(() => import("./pages/ProductDetailPage"));
 const CodesManagement = lazy(() => import("./pages/CodesManagement")); 
 const PurchasesPage = lazy(() => import("./pages/PurchasesPage"));
 const PurchasesIndex = lazy(() => import("./pages/PurchasesIndex"));
+const CodeSearch = lazy(() => import("./pages/CodeSearch"));
 
 // NOTE: We keep MobileNavigation as a normal import because it renders instantly on every page!
 import MobileNavigation from "./components/MobileNavigation";
@@ -156,6 +157,7 @@ const App = () => {
                     <Route path="/admin/login" element={<AdminLogin />} />
                     <Route path="/product/:id" element={<ProductDetailPage />} />
                     <Route path="/course/:courseId" element={<CourseDetail />} />
+                    <Route path="/code-search" element={<CodeSearch />} />
 
                     {/* --- Protected Routes --- */}
                     <Route path="/staff/dashboard" element={<PrivateRoute element={<Dashboard />} allowedRoles={["staff", "admin"]} />} />
@@ -169,7 +171,7 @@ const App = () => {
                     <Route path="/tools-summary" element={<PrivateRoute element={<ToolsSummary />} allowedRoles={["staff", "admin"]} />} />
                     <Route path="/staff" element={<PrivateRoute element={<StaffPage />} allowedRoles={["staff", "admin"]} />} />
                     <Route path="/settings" element={<PrivateRoute element={<Settings />} allowedRoles={["staff", "admin"]} />} />
-                    <Route path="/customer/owing" element={<PrivateRoute element={<CustomerOwing />} allowedRoles={["staff", "admin"]} />} />
+                    <Route path="/customer/receivables" element={<PrivateRoute element={<CustomerOwing />} allowedRoles={["staff", "admin"]} />} />
                     <Route path="/codes-management" element={<PrivateRoute element={<CodesManagement />} allowedRoles={["staff", "admin"]} />} />
                     
                     <Route path="/dashboard" element={<PrivateRoute element={<AdminDashboard />} allowedRoles={["admin"]} />} />

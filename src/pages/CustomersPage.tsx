@@ -413,7 +413,9 @@ const CustomersPage = () => {
                       `}
                     >
                       <TableCell className="font-medium text-sm">
-                        {String(customer.id).slice(0, 8).toUpperCase()}
+                        {String(customer.id).startsWith("temp-")
+                          ? "Adding..."
+                          : String(customer.id).slice(0, 8).toUpperCase()}
                       </TableCell>
                       <TableCell className="font-semibold">
                         {customer.name}

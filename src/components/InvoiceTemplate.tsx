@@ -21,7 +21,6 @@ interface InvoiceProps {
       address: string;
     };
     items: InvoiceItem[];
-    paymentMade: number;
   };
 }
 
@@ -34,8 +33,7 @@ export const InvoiceTemplate = ({ data }: InvoiceProps) => {
   };
 
   const subTotal = data.items.reduce((acc, item) => acc + (item.qty * item.rate), 0);
-  const totalAfterDiscount = subTotal - data.items.reduce((acc, item) => acc + item.discount, 0);
-  const balanceDue = totalAfterDiscount - data.paymentMade;
+  const totalDue = subTotal - data.items.reduce((acc, item) => acc + item.discount, 0);
 
   // Helper to label serials
   const formatSerialLabel = (serial: string, index: number, type?: string) => {
@@ -72,9 +70,9 @@ export const InvoiceTemplate = ({ data }: InvoiceProps) => {
           <h2 className="text-4xl font-light text-gray-400 tracking-widest uppercase">Invoice</h2> 
           <p className="font-bold text-lg text-slate-700">#{data.invoiceNo}</p> 
           <div className="mt-4">
-            <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Balance Due</p> 
+            <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Total Amount</p> 
             <p className="text-2xl font-black text-slate-900">
-              NGN {balanceDue.toLocaleString()}.00
+              NGN {totalDue.toLocaleString()}.00
             </p> 
           </div>
         </div>
@@ -145,19 +143,11 @@ export const InvoiceTemplate = ({ data }: InvoiceProps) => {
             <span>Sub Total</span>
             <span className="font-semibold text-slate-700">{subTotal.toLocaleString()}.00</span>
           </div>
-          <div className="flex justify-between font-black text-xl border-t-2 border-slate-100 pt-4 text-slate-900">
-            <span>Total</span>
-            <span>NGN {totalAfterDiscount.toLocaleString()}.00</span>
-          </div>
-          {/* Accented with brand Red */}
-          <div className="flex justify-between text-xs font-bold" style={{ color: colors.brandRed }}>
-            <span>Payment Made</span>
-            <span>(-) {data.paymentMade.toLocaleString()}.00</span>
-          </div>
-          {/* Styled Balance Due using both brand Blue and Red */}
-          <div className="flex justify-between font-black bg-slate-50 p-4 text-slate-900 border-l-4" style={{ borderColor: colors.brandBlue }}>
-            <span className="text-xs uppercase tracking-widest">Balance Due</span>
-            <span>NGN {balanceDue.toLocaleString()}.00</span>
+          
+          {/* Styled Total Due using brand Blue */}
+          <div className="flex justify-between font-black bg-slate-50 p-4 mt-4 text-slate-900 border-l-4" style={{ borderColor: colors.brandBlue }}>
+            <span className="text-xs uppercase tracking-widest">Total Due</span>
+            <span>NGN {totalDue.toLocaleString()}.00</span>
           </div>
         </div>
       </div>

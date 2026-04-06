@@ -102,7 +102,7 @@ const Login = () => {
               <img src={logo} alt="OTIC Logo" className="h-8 w-8 object-contain" />
             </div>
             <h2 className="text-2xl font-bold text-blue-200 tracking-tight">
-              OTIC SURVEYS
+              OTIC GEOSYSTEMS
             </h2>
           </div>
 

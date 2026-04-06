@@ -107,7 +107,7 @@ const api = {
       subject: `Your Invoice ${invoiceNumber ? `- ${invoiceNumber}` : ''}`,
       message: `Hello ${name},\n\nThank you for your purchase! Here's your invoice:\n\n${items.map(item => 
         `• ${item.equipment} - ₦${parseFloat(item.cost).toLocaleString()}`
-      ).join('\n')}\n\nTotal: ₦${total.toLocaleString()}\n\nPayment link: [Paystack Link Here]\n\nBest regards,\nOTIC Surveys`,
+      ).join('\n')}\n\nTotal: ₦${total.toLocaleString()}\n\nPayment link: [Paystack Link Here]\n\nBest regards,\nOTIC GEOSYSTEMS LTD`,
     }, getAxiosConfig()),
 };
 
