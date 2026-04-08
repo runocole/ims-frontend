@@ -39,6 +39,7 @@ interface PaymentSummary {
 interface PaymentItem {
   equipment?: string;
   equipment_type?: string;
+  quantity?: number; // ADDED: Quantity property for grouped items
   [key: string]: any;
 }
 
@@ -73,7 +74,7 @@ const getStatusBadgeStyle = (status?: string) => {
   if (s === "pending") return "bg-orange-900/50 text-orange-400 border-orange-800";
   if (s === "installment") return "bg-indigo-900/50 text-indigo-400 border-indigo-800";
   if (s === "failed") return "bg-red-900/50 text-red-400 border-red-800";
-  if (s === "overdue") return "bg-rose-900/50 text-rose-400 border-rose-800"; // ADDED OVERDUE STATE
+  if (s === "overdue") return "bg-rose-900/50 text-rose-400 border-rose-800";
   return "bg-slate-700/50 text-slate-300 border-slate-600"; 
 };
 
@@ -115,7 +116,19 @@ const parseItems = (data: any): PaymentItem[] => {
 const getItemsForPayment = (row: PaymentRow): PaymentItem[] => {
   let items = parseItems(row.items);
   if (items.length === 0) items = parseItems(row.equipment);
-  return items;
+  
+  // ADDED: Group identical items together to create a quantity badge
+  const groupedMap = items.reduce((acc, item) => {
+    const key = `${(item.equipment || "").toLowerCase().trim()}_${(item.equipment_type || "").toLowerCase().trim()}`;
+    if (!acc[key]) {
+      acc[key] = { ...item, quantity: 1 };
+    } else {
+      acc[key].quantity = (acc[key].quantity || 1) + 1;
+    }
+    return acc;
+  }, {} as Record<string, PaymentItem>);
+  
+  return Object.values(groupedMap);
 };
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -203,7 +216,11 @@ const [showRevenue, setShowRevenue] = useState(false);
     const headers = ["Invoice", "Customer", "Phone", "Equipment Details", "Amount", "Date", "Plan", "Status", "State"];
     const rows = payments.map((p) => {
       const itemsText = getItemsForPayment(p)
-        .map(i => `${i.equipment || "N/A"} (${i.equipment_type || "N/A"})`)
+        .map(i => {
+          // ADDED: Include quantity in the CSV text output if > 1
+          const qtyText = i.quantity && i.quantity > 1 ? ` x${i.quantity}` : "";
+          return `${i.equipment || "N/A"}${qtyText} (${i.equipment_type || "N/A"})`;
+        })
         .join(" | ");
 
       return [
@@ -503,9 +520,17 @@ const [showRevenue, setShowRevenue] = useState(false);
                               {itemsList.length > 0 ? (
                                 itemsList.map((item, i) => (
                                   <div key={i} className="flex flex-col mb-3 last:mb-0 border-l-2 border-slate-700 pl-3">
-                                    <span className="text-white text-sm font-semibold mb-1">
-                                      {item.equipment || "Unnamed Equipment"}
-                                    </span>
+                                    {/* ADDED: Flex container to hold the title and quantity badge together */}
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="text-white text-sm font-semibold">
+                                        {item.equipment || "Unnamed Equipment"}
+                                      </span>
+                                      {item.quantity && item.quantity > 1 && (
+                                        <span className="bg-slate-700 text-blue-300 px-1.5 py-0.5 rounded text-[10px] font-bold border border-slate-600">
+                                          x{item.quantity}
+                                        </span>
+                                      )}
+                                    </div>
                                     <span className={`w-fit px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${getBadgeStyle(item.equipment_type)}`}>
                                       {item.equipment_type || "Accessory"}
                                     </span>

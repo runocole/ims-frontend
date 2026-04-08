@@ -157,7 +157,7 @@ const App = () => {
                     <Route path="/admin/login" element={<AdminLogin />} />
                     <Route path="/product/:id" element={<ProductDetailPage />} />
                     <Route path="/course/:courseId" element={<CourseDetail />} />
-                    <Route path="/code-search" element={<CodeSearch />} />
+                    <Route path="/code" element={<CodeSearch />} />
 
                     {/* --- Protected Routes --- */}
                     <Route path="/staff/dashboard" element={<PrivateRoute element={<Dashboard />} allowedRoles={["staff", "admin"]} />} />
