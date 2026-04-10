@@ -1,5 +1,3 @@
-// src/components/InvoiceTemplate.tsx
-import React from 'react';
 // ✅ 1. Import your SPECIFIC logo here
 import logo from "../assets/otic-geosystems-logo.png"; 
 

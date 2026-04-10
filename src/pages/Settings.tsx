@@ -122,7 +122,6 @@ const Settings: React.FC = () => {
   const [dialogType, setDialogType] = useState<DialogType>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState("all");
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [exchangeRate, setExchangeRate] = useState("");
   const [selectedInvoice, setSelectedInvoice] = useState<string>("");
@@ -138,10 +137,6 @@ const Settings: React.FC = () => {
   const [supplierForm, setSupplierForm] = useState({
     name: "",
   });
-
-  const filteredEquipmentTypes = categoryFilter === "all" 
-    ? equipmentTypes 
-    : equipmentTypes.filter(type => type.category === categoryFilter);
 
   const equipmentByInvoice = equipmentTypes.reduce((acc, equipment) => {
     const invoiceNum = equipment.invoice_number || "No Invoice";

@@ -2,11 +2,12 @@
 import axios from "axios";
 import type { Sale, Customer, Tool, GroupedTool, SoldSerialInfo } from "../types";
 
-const API_URL = "http://localhost:8000/api";
+const API_URL = "https://inventory.oticgs.com/api";
 
 // Helper to get headers - consolidated to avoid repetition
 const getAxiosConfig = () => {
-  const token = localStorage.getItem("access");
+  // Try to get 'access', if not found, try 'token'
+  const token = localStorage.getItem("access") || localStorage.getItem("token"); 
   return {
     headers: {
       Authorization: `Bearer ${token}`,

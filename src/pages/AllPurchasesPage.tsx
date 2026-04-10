@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "../components/DashboardLayout";
 import { Loader2, Receipt, User, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 
-const API_BASE_URL = "http://localhost:8000/api";
+const API_BASE_URL = `https://inventory.oticgs.com/api`;
 
 const AllPurchasesPage = () => {
   const navigate = useNavigate();

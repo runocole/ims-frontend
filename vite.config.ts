@@ -4,7 +4,7 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/', 
+  base: '/inventory/', 
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -17,6 +17,5 @@ export default defineConfig({
     fs: {
       strict: false
     }
-    // ❌ no historyApiFallback here
   }
 })

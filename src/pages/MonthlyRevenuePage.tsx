@@ -14,7 +14,7 @@ import {
 } from "recharts";
 import axios from "axios";
 
-const API_URL = "http://127.0.0.1:8000/api";
+const API_URL = "https://inventory.oticgs.com/api";
 
 // ------------------------------
 // TYPES
@@ -81,7 +81,14 @@ const MonthlyRevenuePage = () => {
         const res = await axios.get(`${API_URL}/dashboard/monthly-revenue/`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        setData(res.data);
+
+        const d = res.data;
+// STRICT FALLBACK: Ensure we always set valid properties
+setData({
+  months: Array.isArray(d?.months) ? d.months : (Array.isArray(d) ? d : []),
+  total_all_time: d?.total_all_time || 0,
+  total_sales_count: d?.total_sales_count || 0,
+});
       } catch (err) {
         console.error("Failed to fetch monthly revenue:", err);
         setError("Could not load revenue data. Please try again.");

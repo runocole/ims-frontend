@@ -27,7 +27,6 @@ interface EquipmentSelectorProps {
 
 const EquipmentSelector = ({
   currentItem,
-  groupedTools,
   filteredGroupedTools,
   onCategoryChange,
   onToolSelect,

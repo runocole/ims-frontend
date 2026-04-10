@@ -8,8 +8,7 @@ import {
   FileText,
   Key,
   ReceiptText,
-  Wallet,
-  TrendingUp, // ✅ Added Wallet icon for Purchases
+  ClipboardList
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import {
@@ -52,7 +51,7 @@ export function AppSidebar({ isOpen: externalIsOpen }: AppSidebarProps) {
       { title: "Code Management", url: "/codes-management", icon: Key },
       { title: "Payments", url: "/payments", icon: DollarSign },
       { title: "Invoices", url: "/invoice/latest", icon: ReceiptText },
-      { title: "Staff", url: "/staff", icon: Users },
+      // { title: "Staff", url: "/staff", icon: Users },
       { title: "Staff Directory", url: "/staff-directory", icon: Users },
       { title: "Inventory Summary", url: "/tools-summary", icon: FileText },
       { title: "Sales", url: "/admin/sales", icon: ShoppingCart },
@@ -63,6 +62,7 @@ export function AppSidebar({ isOpen: externalIsOpen }: AppSidebarProps) {
       { title: "Code Management", url: "/codes-management", icon: Key },
       { title: "Items", url: "/tools", icon: Package },
       { title: "Invoices", url: "/invoice/latest", icon: ReceiptText },
+      { title: "Quotations", url: "/quotations", icon: ClipboardList },
       { title: "Payments", url: "/payments", icon: DollarSign },
       { title: "Inventory Summary", url: "/tools-summary", icon: FileText }, 
       { title: "Customers", url: "/customers", icon: Users },

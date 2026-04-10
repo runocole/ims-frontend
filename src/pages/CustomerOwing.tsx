@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "../components/DashboardLayout";
 import { StatsCard } from "../components/StatsCard";
 import {
-  DollarSign, TrendingUp, Clock, AlertCircle,
-  Users, Send, ArrowLeft, RefreshCw,
+  TrendingUp, Clock, AlertCircle,
+  Users, UserSearch, ArrowLeft, RefreshCw,
   ChevronLeft, ChevronRight, Eye, EyeOff
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -17,7 +17,7 @@ import { fetchCustomerOwingData } from "../services/api";
 import axios from "axios";
 import { toast } from "react-hot-toast";
 
-const API_URL = "http://localhost:8000/api";
+const API_URL = "https://inventory.oticgs.com/api";
 const CUSTOMERS_PER_PAGE = 10;
 
 // ------------------------------
@@ -196,25 +196,31 @@ const [showRevenue, setShowRevenue] = useState(false);
     }
   };
 
-  const handleSendReminder = (customerId: string) => {
-    console.log("Sending reminder to customer:", customerId);
-  };
 
   // ------------------------------
   // FILTER + SEARCH
   // Filter "ongoing" maps to both on-track and due-soon DB values
   // ------------------------------
   const filteredCustomers = customerData?.customers?.filter((customer) => {
+    const s = (customer.status || "").toLowerCase().trim();
+
+    // 1. STRICT EXCLUSION: Completely hide drafts, fully-paid, and completed sales
+    // This guarantees they NEVER show up on the owing page, regardless of VAT or filters.
+    if (s === "pending" || s === "fully-paid" || s === "completed") {
+      return false;
+    }
+
+    // 2. Apply Dropdown Filters
     let matchesFilter = false;
     if (filter === "all") {
       matchesFilter = true;
     } else if (filter === "ongoing") {
-      // Look directly for the new "ongoing" status from the backend
-      matchesFilter = customer.status === "ongoing"; 
+      matchesFilter = s === "ongoing"; 
     } else {
-      matchesFilter = customer.status === filter;
+      matchesFilter = s === filter;
     }
 
+    // 3. Apply Search Query
     const query = searchQuery.toLowerCase();
     const matchesSearch =
       !query ||
@@ -224,6 +230,7 @@ const [showRevenue, setShowRevenue] = useState(false);
 
     return matchesFilter && matchesSearch;
   }) ?? [];
+
 
   // ------------------------------
   // PAGINATION
@@ -298,11 +305,11 @@ const [showRevenue, setShowRevenue] = useState(false);
         {/* Stats Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <StatsCard
-            title="Total Revenue"
+            title="Total Money"
             value={isAdmin && showRevenue
               ? formatCurrency(customerData?.summary?.totalSellingPrice || 0)
               : "₦ ••••••"}
-            icon={DollarSign}
+            icon={UserSearch}
             actionIcon={isAdmin ? (showRevenue ? EyeOff : Eye) : undefined}
             onActionClick={isAdmin ? () => setShowRevenue(!showRevenue) : undefined}
           />
@@ -351,11 +358,8 @@ const [showRevenue, setShowRevenue] = useState(false);
             <CardHeader><CardTitle>Quick Actions</CardTitle></CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <Button className="w-full bg-green-600 hover:bg-green-700">
-                  <Send className="w-4 h-4 mr-2" /> Send Bulk Reminders
-                </Button>
                 <Button className="w-full bg-blue-600 hover:bg-blue-700">
-                  <DollarSign className="w-4 h-4 mr-2" /> Record Bulk Payment
+                  <UserSearch className="w-4 h-4 mr-2" /> Record Bulk Payment
                 </Button>
               </div>
             </CardContent>
@@ -472,20 +476,11 @@ const [showRevenue, setShowRevenue] = useState(false);
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleSendReminder(customer.id)}
-                            className="bg-yellow-600 hover:bg-yellow-700 border-yellow-600"
-                            title="Send Reminder"
-                          >
-                            <Send className="w-3 h-3" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
                             onClick={() => handleRecordPayment(customer)}
                             className="bg-green-600 hover:bg-green-700 border-green-600"
                             title="Record Payment"
                           >
-                            <DollarSign className="w-3 h-3" />
+                            <UserSearch className="w-3 h-3" />
                           </Button>
                         </div>
                       </TableCell>

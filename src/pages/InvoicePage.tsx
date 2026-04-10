@@ -1,4 +1,3 @@
-import React from "react";
 import { InvoiceTemplate } from "../components/InvoiceTemplate";
 import { Button } from "../components/ui/button";
 import { Printer, ArrowLeft } from "lucide-react";

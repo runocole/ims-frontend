@@ -18,9 +18,6 @@ interface AssignmentModalProps {
 const AssignmentModal = ({ assignment, onClose }: AssignmentModalProps) => {
   if (!assignment) return null;
 
-  // Determine the display label based on the actual assignment data
-  const equipmentTypeLabel = assignment.setType || "Equipment Unit";
-
   return (
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-w-md bg-slate-900 border-slate-700 text-white">

@@ -3,10 +3,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import { DashboardLayout } from "../components/DashboardLayout";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Wallet, User, ArrowLeft, Loader2, Package, Calendar, CheckCircle2, Edit2, Save, X } from "lucide-react";
+import { Wallet, User, ArrowLeft, Loader2, Package, Edit2, Save, X } from "lucide-react";
 import { toast } from "sonner";
 
-const API_BASE_URL = "http://localhost:8000/api"; 
+const API_BASE_URL = "https://inventory.oticgs.com/api";
 
 const PurchasesPage: React.FC = () => {
   const { phone, invoice_number } = useParams<{ phone: string, invoice_number: string }>();
@@ -147,7 +147,6 @@ const PurchasesPage: React.FC = () => {
   }, [phone, invoice_number]);
 
   // Calculations
-  const safeParseAmount = (val: any) => parseFloat(val?.toString().replace(/,/g, "") || "0");
   const initialDeposit = parseFloat(invoiceDetail?.initial_deposit || "0");
 const totalSubsequentPayments = invoicePayments.reduce(
   (acc: number, p: any) => acc + parseFloat(p.amount || "0"), 0

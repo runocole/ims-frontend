@@ -17,7 +17,7 @@ import { useNavigate } from "react-router-dom";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const API_URL = "http://127.0.0.1:8000/api";
+const API_URL = "https://inventory.oticgs.com/api";
 
 const authHeader = () => {
   const token = localStorage.getItem("access") || localStorage.getItem("token");
@@ -328,7 +328,7 @@ const [showRevenue, setShowRevenue] = useState(false);
                     <p className="text-sm text-emerald-400 font-medium">Total Collections</p>
                     <p className="text-2xl font-bold text-white mt-1">
                       {/* Logic: Revenue - Receivables = Cash actually received */}
-                      {formatNaira(summary.total_revenue - (summary.receivables || 0))}
+                      {summary ? formatNaira((summary.total_revenue || 0) - (summary.receivables || 0)) : "₦0"}
                     </p>
                     <p className="text-xs text-emerald-500 mt-1">
                       Actual cash received
@@ -497,102 +497,113 @@ const [showRevenue, setShowRevenue] = useState(false);
                     </TableHeader>
 
                     <TableBody>
-                      {payments.map((row, idx) => {
-                        const itemsList = getItemsForPayment(row);
+  {/* Safety Check: Only map if payments is actually an array */}
+  {Array.isArray(payments) ? (
+    payments.map((row, idx) => {
+      const itemsList = getItemsForPayment(row);
 
-                        return (
-                          <TableRow
-                            key={`${row.invoice_number}-${idx}`}
-                            className="border-b border-slate-700 hover:bg-slate-800/50 transition-colors text-gray-300"
-                          >
-                            <TableCell className="p-3 font-mono text-blue-300 text-xs font-bold whitespace-nowrap">
-                              {row.invoice_number}
-                            </TableCell>
+      return (
+        <TableRow
+          key={`${row.invoice_number}-${idx}`}
+          className="border-b border-slate-700 hover:bg-slate-800/50 transition-colors text-gray-300"
+        >
+          <TableCell className="p-3 font-mono text-blue-300 text-xs font-bold whitespace-nowrap">
+            {row.invoice_number}
+          </TableCell>
 
-                            <TableCell className="p-3 text-white font-medium">
-                              <div className="flex flex-col">
-                                <span className="text-sm">{row.customer_name}</span>
-                                <span className="text-xs text-gray-500 whitespace-nowrap">{row.customer_phone}</span>
-                              </div>
-                            </TableCell>
+          <TableCell className="p-3 text-white font-medium">
+            <div className="flex flex-col">
+              <span className="text-sm">{row.customer_name}</span>
+              <span className="text-xs text-gray-500 whitespace-nowrap">{row.customer_phone}</span>
+            </div>
+          </TableCell>
 
-                            <TableCell className="p-3 min-w-[200px]">
-                              {itemsList.length > 0 ? (
-                                itemsList.map((item, i) => (
-                                  <div key={i} className="flex flex-col mb-3 last:mb-0 border-l-2 border-slate-700 pl-3">
-                                    {/* ADDED: Flex container to hold the title and quantity badge together */}
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="text-white text-sm font-semibold">
-                                        {item.equipment || "Unnamed Equipment"}
-                                      </span>
-                                      {item.quantity && item.quantity > 1 && (
-                                        <span className="bg-slate-700 text-blue-300 px-1.5 py-0.5 rounded text-[10px] font-bold border border-slate-600">
-                                          x{item.quantity}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <span className={`w-fit px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${getBadgeStyle(item.equipment_type)}`}>
-                                      {item.equipment_type || "Accessory"}
-                                    </span>
-                                  </div>
-                                ))
-                              ) : (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border bg-amber-900/30 text-amber-500 border-amber-800/50">
-                                  No Items Found
-                                </span>
-                              )}
-                            </TableCell>
+          <TableCell className="p-3 min-w-[200px]">
+            {itemsList.length > 0 ? (
+              itemsList.map((item, i) => (
+                <div key={i} className="flex flex-col mb-3 last:mb-0 border-l-2 border-slate-700 pl-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-white text-sm font-semibold">
+                      {item.equipment || "Unnamed Equipment"}
+                    </span>
+                    {item.quantity && item.quantity > 1 && (
+                      <span className="bg-slate-700 text-blue-300 px-1.5 py-0.5 rounded text-[10px] font-bold border border-slate-600">
+                        x{item.quantity}
+                      </span>
+                    )}
+                  </div>
+                  <span className={`w-fit px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${getBadgeStyle(item.equipment_type)}`}>
+                    {item.equipment_type || "Accessory"}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border bg-amber-900/30 text-amber-500 border-amber-800/50">
+                No Items Found
+              </span>
+            )}
+          </TableCell>
 
-                            <TableCell className="p-3 font-bold text-green-400 whitespace-nowrap">
-                              {formatNaira(parseFloat(row.amount))}
-                            </TableCell>
+          <TableCell className="p-3 font-bold text-green-400 whitespace-nowrap">
+            {/* Added a safety check for row.amount as well */}
+            {row.amount ? formatNaira(parseFloat(row.amount)) : "₦0.00"}
+          </TableCell>
 
-                            <TableCell className="p-3 text-sm text-blue-300 whitespace-nowrap">
-                              {row.date}
-                            </TableCell>
+          <TableCell className="p-3 text-sm text-blue-300 whitespace-nowrap">
+            {row.date}
+          </TableCell>
 
-                            <TableCell className="p-3 text-xs text-blue-400 whitespace-nowrap">
-                              {row.payment_plan || "Full Payment"}
-                            </TableCell>
+          <TableCell className="p-3 text-xs text-blue-400 whitespace-nowrap">
+            {row.payment_plan || "Full Payment"}
+          </TableCell>
 
-                            <TableCell className="p-3">
-                              <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border ${getStatusBadgeStyle(row.payment_status)}`}>
-                                {row.payment_status || "PENDING"}
-                              </span>
-                            </TableCell>
+          <TableCell className="p-3">
+            <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border ${getStatusBadgeStyle(row.payment_status)}`}>
+              {row.payment_status || "PENDING"}
+            </span>
+          </TableCell>
 
-                            <TableCell className="p-3 text-xs text-slate-400 whitespace-nowrap">
-                              {row.state}
-                            </TableCell>
+          <TableCell className="p-3 text-xs text-slate-400 whitespace-nowrap">
+            {row.state}
+          </TableCell>
 
-                            {/* Actions Cell */}
-                            <TableCell className="p-3 text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                <Button 
-                                  variant="ghost" 
-                                  size="icon" 
-                                  onClick={() => navigate(`/invoice/${row.invoice_number}`)} 
-                                  className="text-blue-400 hover:bg-blue-900/30" 
-                                  title="View Invoice Card"
-                                >
-                                  <FileText className="w-4 h-4" />
-                                </Button>
-                                <Button 
-                                  variant="ghost" 
-                                  size="icon" 
-                                  onClick={() => navigate(`/sales/${row.customer_phone}`)} 
-                                  className="text-emerald-400 hover:bg-emerald-900/30" 
-                                  title="Filter Customer on Sales Page"
-                                >
-                                  <UserSearch className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
+          <TableCell className="p-3 text-right">
+            <div className="flex items-center justify-end gap-1">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => navigate(`/invoice/${row.invoice_number}`)} 
+                className="text-blue-400 hover:bg-blue-900/30" 
+                title="View Invoice Card"
+              >
+                <FileText className="w-4 h-4" />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => navigate(`/sales/${row.customer_phone}`)} 
+                className="text-emerald-400 hover:bg-emerald-900/30" 
+                title="Filter Customer on Sales Page"
+              >
+                <UserSearch className="w-4 h-4" />
+              </Button>
+            </div>
+          </TableCell>
+        </TableRow>
+      );
+    })
+  ) : (
+    // Fallback if 'payments' is not an array
+    <TableRow>
+      <TableCell colSpan={9} className="h-24 text-center text-red-400 bg-red-900/10">
+        <div className="flex flex-col items-center gap-2">
+          <span>Data format error: Payments is not a list.</span>
+          <span className="text-[10px] text-gray-500">Check the server response in Network tab.</span>
+        </div>
+      </TableCell>
+    </TableRow>
+  )}
+</TableBody>
                   </Table>
                 </div>
 

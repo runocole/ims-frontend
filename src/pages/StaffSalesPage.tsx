@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, FileText, Loader2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "../components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
+import { Card, CardContent } from "../components/ui/card";
 import { DashboardLayout } from "../components/DashboardLayout";
 import axios from "axios";
 
-const API_URL = "http://localhost:8000/api";
+const API_URL = `${import.meta.env.VITE_API_URL}/api`;
 
 export default function StaffSalesPage() {
   // ✅ This grabs ALL params from the URL

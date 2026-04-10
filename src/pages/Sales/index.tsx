@@ -7,16 +7,14 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { toast } from "react-hot-toast";
 import axios from "axios"; 
-import { useQuery } from "@tanstack/react-query"; // NEW: React Query
+import { useQuery } from "@tanstack/react-query";
 
-// Types & Hooks
 import type { Customer, Sale } from "./types";
 import { useSalesData } from "./hooks/useSalesData";
 import { useSaleForm } from "./hooks/useSaleForm";
 import { useToolAssignment } from "./hooks/useToolAssignment";
 import { api } from "./utils/api";
 
-// Components
 import { CustomerSearch } from "./components/CustomerSearch";
 import { SalesTable } from "./components/SalesTable";
 import { AddSaleDialog } from "./components/AddSaleDialog";
@@ -24,32 +22,22 @@ import { EquipmentTypeModal } from "./components/EquipmentTypeModal";
 import { AssignmentModal } from "./components/AssignmentModal";
 import { EditStatusDialog } from "./components/EditStatusDialog";
 import { ViewSerialsDialog } from "./components/ViewSerialsDialog";
+import { useStaffList } from "../../hooks/useStaffList";
 
-export const HARDCODED_STAFF = [
-  { id: "1", name: "Constance Akanueze", email: "a.constance@oticsurveys.com" },
-  { id: "2", name: "Survey Andrew", email: "dan@oticsurveys.com" },
-  { id: "3", name: "Precious Leniye", email: "precious@company.com" },
-  { id: "4", name: "Blessing Ogbonna", email: "blessing.ogbonna@oticsurveys.com" },
-  { id: "5", name: "Favour Ahamefula", email: "favour.ahamefula@oticsurveys.com"},
-  { id: "6", name: "Winifred Agbapu", email: "winifredagbapu33@gmail.com"}
-];
 
 export default function SalesPage() {
   const navigate = useNavigate();
 
-  // --- UI States ---
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // --- Data States (Managed Locally) ---
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [selectedStaff, setSelectedStaff] = useState<string>("");
   const [applyTax, setApplyTax] = useState(false);
+  const [showDrafts, setShowDrafts] = useState(false);
 
-  // --- Modal States ---
   const [showEquipmentTypeModal, setShowEquipmentTypeModal] = useState(false);
   const [editingSale, setEditingSale] = useState<any>(null);
   const [editStatusOpen, setEditStatusOpen] = useState(false);
@@ -62,66 +50,63 @@ export default function SalesPage() {
     soldSerials: any[];
   }>({ open: false, tool: null, soldSerials: [] });
 
+
+  const { staffList } = useStaffList();
   const {
-    customers,
-    tools,
-    groupedTools,
-    setGroupedTools,
-    fetchGroupedTools,
-    addSale
+    customers, tools, groupedTools, setGroupedTools,
+    fetchGroupedTools, addSale
   } = useSalesData();
 
   const {
-    saleItems,
-    currentItem,
-    saleDetails,
-    addItem,
-    removeItem,
-    updateCurrentItem,
-    updateSaleDetails,
-    resetForm
+    saleItems, currentItem, saleDetails,
+    addItem, removeItem, updateCurrentItem, updateSaleDetails, resetForm
   } = useSaleForm();
 
   const { assignRandomTool } = useToolAssignment();
 
-  // --- REACT QUERY FETCHING LOGIC ---
+  // ── React Query — includes showDrafts in key so it refetches on toggle ──
   const { data: salesData, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['sales', currentPage, startDate, endDate], // Auto-refetches when these change
+    queryKey: ['sales', currentPage, startDate, endDate, showDrafts],
     queryFn: async () => {
       const token = localStorage.getItem("access") || localStorage.getItem("token"); 
-      const API_URL = "http://127.0.0.1:8000/api";
-      const res = await axios.get(`${API_URL}/sales/`, {
+      const params: Record<string, any> = {
+        page: currentPage,
+        start_date: startDate,
+        end_date: endDate,
+      };
+      // Draft mode: send status=pending so backend returns only pending sales
+      if (showDrafts) params.status = "pending";
+      const res = await axios.get(`https://inventory.oticgs.com/api/sales/`, {
         headers: { Authorization: `Bearer ${token}` },
-        params: { page: currentPage, start_date: startDate, end_date: endDate }
+        params,
       });
       return res.data;
     }
   });
 
-  // Derived state from React Query
-  const serverSales = Array.isArray(salesData?.results) ? salesData.results : (Array.isArray(salesData) ? salesData : []);
+  const serverSales = salesData?.results && Array.isArray(salesData.results)
+  ? salesData.results
+  : Array.isArray(salesData) 
+    ? salesData 
+    : [];
   const totalItems = salesData?.count || 0;
   const totalPages = salesData?.count ? Math.ceil(salesData.count / 10) : 1;
 
-  // --- Calculations ---
   const subtotal = saleItems.reduce((sum, item) => sum + parseFloat(item.cost || "0"), 0);
   const taxAmount = applyTax ? subtotal * 0.075 : 0;
   const totalCost = subtotal + taxAmount;
 
-  // Fetch tools when category changes
   useEffect(() => {
     let isMounted = true;
-    if (!currentItem.selectedCategory) {
-      setGroupedTools([]);
-      return;
-    }
+    if (!currentItem.selectedCategory) { setGroupedTools([]); return; }
     const loadTools = async () => {
       try {
-        const data = await fetchGroupedTools(currentItem.selectedCategory, currentItem.selectedEquipmentType);
+        const data = await fetchGroupedTools(
+          currentItem.selectedCategory,
+          currentItem.selectedEquipmentType
+        );
         if (isMounted) setGroupedTools(data || []);
-      } catch (error) {
-        console.error(error);
-      }
+      } catch (error) { console.error(error); }
     };
     loadTools();
     return () => { isMounted = false; };
@@ -138,83 +123,140 @@ export default function SalesPage() {
   };
 
   const handleToolSelect = (toolName: string) => {
-    const selected = Array.isArray(groupedTools) ? groupedTools.find(t => t.name === toolName) : null;
+    const selected = Array.isArray(groupedTools)
+      ? groupedTools.find(t => t.name === toolName) : null;
     if (selected) {
-      updateCurrentItem({ selectedTool: selected, cost: currentItem.cost || String(selected.cost || "") });
+      updateCurrentItem({
+        selectedTool: selected,
+        cost: currentItem.cost || String(selected.cost || ""),
+      });
     }
   };
 
-  const handleSaveSale = async (action: "draft" | "send") => {
-    if (!selectedCustomer || saleItems.length === 0) return toast.error("Missing customer or items.");
-    
-    const staffName = String(selectedStaff).trim();
-    if (!staffName || staffName === "undefined") return toast.error("Please select a staff member.");
+  // ── Shared reset ──
+  const resetDialog = () => {
+    resetForm();
+    setApplyTax(false);
+    setSelectedStaff("");
+    setSelectedCustomer(null);
+    setOpen(false);
+  };
 
-    let calculatedDueDate = null;
-
+  // ── Build payload — shared shape for draft, send, cancel-save ──
+  const buildPayload = (status: string) => {
+    let calculatedDueDate: string | null = null;
     if (saleDetails.payment_plan?.includes("Yes") && saleDetails.payment_months) {
-    const months = parseInt(saleDetails.payment_months, 10);
-    const date = new Date();
-    date.setMonth(date.getMonth() + months);
-    
-    // Formats it as YYYY-MM-DD for Django
-    calculatedDueDate = date.toISOString().split('T')[0];
-    
-  }
+      const months = parseInt(saleDetails.payment_months, 10);
+      const date = new Date();
+      date.setMonth(date.getMonth() + months);
+      calculatedDueDate = date.toISOString().split("T")[0];
+    }
+    return {
+      name: selectedCustomer!.name,
+      phone: selectedCustomer!.phone,
+      state: selectedCustomer!.state,
+      items: saleItems,
+      staff: String(selectedStaff).trim(),
+      tax_amount: String(taxAmount),
+      total_cost: String(totalCost),
+      payment_plan: saleDetails.payment_plan,
+      initial_deposit: saleDetails.initial_deposit || null,
+      payment_months: saleDetails.payment_months || null,
+      due_date: calculatedDueDate,
+      date_sold: new Date().toISOString().split("T")[0],
+      // Explicitly send the status — backend will honour 'pending'
+      payment_status: status,
+    };
+  };
+
+  // ── Resolve live status for Save & Send ──
+  const resolveStatus = () => {
+    const deposit = parseFloat(saleDetails.initial_deposit || "0");
+    if (deposit >= totalCost && totalCost > 0) return "completed";
+    if (saleDetails.payment_plan?.toLowerCase() === "installment" || deposit > 0) return "ongoing";
+    if (saleDetails.payment_plan === "Yes") return "ongoing";
+    return "completed";
+  };
+
+  // ── Restore all assigned serials back to inventory ──
+  const restoreAllSerials = async () => {
+    for (const item of saleItems) {
+      if (item.assigned_tool_id) {
+        try {
+          await api.restoreSerials(item.assigned_tool_id, item.serial_set || []);
+        } catch { /* best-effort */ }
+      }
+    }
+  };
+
+  // ── Main save handler ──
+  // action: "draft" | "send" | "cancel"
+  const handleSaveSale = async (action: "draft" | "send" | "cancel") => {
+
+    // Cancel with no items — just close
+    if (action === "cancel" && saleItems.length === 0) {
+      resetDialog();
+      return;
+    }
+
+    // Cancel with items — save as draft if we have customer + staff, else restore serials
+    if (action === "cancel" && saleItems.length > 0) {
+      const hasCustomer = !!selectedCustomer;
+      const hasStaff = !!String(selectedStaff).trim();
+      if (hasCustomer && hasStaff) {
+        try {
+          const payload = buildPayload("pending");
+          const res = await api.createSale(payload);
+          addSale(res.data);
+          refetch();
+          toast("Sale saved as draft. Find it under Drafts.", { icon: "📋" });
+        } catch {
+          await restoreAllSerials();
+          toast("Could not save draft. Items returned to inventory.", { icon: "↩️" });
+        }
+      } else {
+        await restoreAllSerials();
+        toast("Items returned to inventory.", { icon: "↩️" });
+      }
+      resetDialog();
+      return;
+    }
+
+    // Draft or Send — require customer and items
+    if (!selectedCustomer || saleItems.length === 0) {
+      return toast.error("Missing customer or items.");
+    }
+    const staffName = String(selectedStaff).trim();
+    if (!staffName || staffName === "undefined" || staffName === "null") {
+      return toast.error("Please select a staff member.");
+    }
 
     setIsSubmitting(true);
     try {
-      const payload = {
-        name: selectedCustomer.name,
-        phone: selectedCustomer.phone,
-        state: selectedCustomer.state,
-        items: saleItems,
-        staff: staffName, 
-        tax_amount: String(taxAmount), 
-        total_cost: String(totalCost),
-        payment_plan: saleDetails.payment_plan,
-        initial_deposit: saleDetails.initial_deposit || null,
-        payment_months: saleDetails.payment_months || null,
-        //expiry_date: saleDetails.expiry_date || null,
-        due_date: calculatedDueDate,
-        date_sold: new Date().toISOString().split('T')[0],
-        payment_status: (() => {
-          const deposit = parseFloat(saleDetails.initial_deposit || "0");
-          const total = totalCost;
-          // Fully paid upfront — no payment plan, deposit covers full amount
-          if (deposit >= total && total > 0) return "completed";
-          // Has installment plan or partial deposit — ongoing
-          if (saleDetails.payment_plan?.toLowerCase() === "installment" || deposit > 0) return "ongoing";
-          // No payment info at all
-          return "pending";
-        })(),
-     };
-
+      const status = action === "draft" ? "pending" : resolveStatus();
+      const payload = buildPayload(status);
       const res = await api.createSale(payload);
-      addSale(res.data); 
+      addSale(res.data);
 
       if (action === "send") {
-        const generatedSale = res.data as Sale; 
+        const generatedSale = res.data as Sale;
         const invoiceData = {
           invoiceNo: generatedSale.invoice_no || `INV-${String(generatedSale.id).slice(0, 5)}`,
-          date: new Date().toLocaleDateString('en-GB'),
+          date: new Date().toLocaleDateString("en-GB"),
           customer: { name: selectedCustomer.name, address: `${selectedCustomer.state}, Nigeria` },
-          items: saleItems.map(item => ({ description: item.equipment, qty: 1, rate: parseFloat(item.cost), discount: 0 })),
-          taxAmount, 
-          paymentMade: parseFloat(saleDetails.initial_deposit || "0")
+          items: saleItems.map(item => ({
+            description: item.equipment, qty: 1, rate: parseFloat(item.cost), discount: 0,
+          })),
+          taxAmount,
+          paymentMade: parseFloat(saleDetails.initial_deposit || "0"),
         };
         localStorage.setItem("last_generated_invoice", JSON.stringify(invoiceData));
         navigate(`/invoice/${generatedSale.id}`);
       } else {
         toast.success("Sale saved as draft!");
-        refetch(); // Instantly update the table via React Query
+        refetch();
       }
-
-      resetForm();
-      setApplyTax(false);
-      setSelectedStaff("");
-      setSelectedCustomer(null);
-      setOpen(false);
+      resetDialog();
     } catch (error: any) {
       toast.error("Failed to save sale.");
       console.error(error.response?.data);
@@ -222,6 +264,90 @@ export default function SalesPage() {
       setIsSubmitting(false);
     }
   };
+
+  // ── Resume a draft — pre-fills customer and staff, opens dialog ──
+  const handleResumeDraft = async (sale: Sale) => {
+  try {
+    // 1. Fetch the full draft sale with all items from the backend
+    const token = localStorage.getItem("access") || localStorage.getItem("token");
+    const res = await axios.get(`https://inventory.oticgs.com/api/sales/${sale.id}/`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const fullSale = res.data;
+
+    // 2. Pre-fill customer
+    setSelectedCustomer({
+      id: fullSale.id,
+      name: fullSale.name,
+      phone: fullSale.phone,
+      email: "",
+      state: fullSale.state,
+    });
+
+    // 3. Pre-fill staff
+    setSelectedStaff(fullSale.staff || "");
+
+    // 4. Pre-fill payment details
+    updateSaleDetails({
+      payment_plan: fullSale.payment_plan || "No",
+      initial_deposit: fullSale.initial_deposit
+        ? String(fullSale.initial_deposit)
+        : "",
+      payment_months: fullSale.payment_months
+        ? String(fullSale.payment_months)
+        : "",
+    });
+
+    // 5. Restore all sale items from the draft
+    // These serials are already assigned in the DB so no new assignment needed
+    if (fullSale.items && fullSale.items.length > 0) {
+      fullSale.items.forEach((item: any) => {
+        addItem({
+          id: window.crypto.randomUUID(),
+          tool_id: item.tool_id || item.assigned_tool_id,
+          equipment: item.equipment,
+          equipment_type: item.equipment_type || "",
+          cost: String(item.cost),
+          category: item.category,
+          serial_set: item.serial_set || [],
+          assigned_tool_id: item.assigned_tool_id || item.tool_id,
+          import_invoice: item.import_invoice || "",
+        });
+      });
+    }
+
+    // 6. Open the dialog
+    setOpen(true);
+
+    // 7. Delete the draft sale from DB since we're resuming it
+    // This prevents duplicate records — the user will Save & Send to create a fresh one
+    await axios.delete(`https://inventory.oticgs.com/api/sales/${sale.id}/`,{
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    refetch();
+
+    toast(
+      `Resuming draft for ${fullSale.name}. Items restored — click Save & Send when ready.`,
+      { icon: "▶️", duration: 6000 }
+    );
+  } catch (err: any) {
+    toast.error("Failed to resume draft. Please try again.");
+    console.error(err);
+  }
+};
+
+const handleDeleteDraft = async (sale: Sale) => {
+  try {
+    const token = localStorage.getItem("access") || localStorage.getItem("token");
+    await axios.delete(`https://inventory.oticgs.com/api/sales/${sale.id}/`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    refetch();
+    toast.success("Draft deleted. Items returned to inventory.");
+  } catch {
+    toast.error("Failed to delete draft.");
+  }
+};
 
   const handleRemoveItem = async (index: number) => {
     const itemToRemove = saleItems[index];
@@ -237,27 +363,26 @@ export default function SalesPage() {
     autoTable(doc, {
       startY: 25,
       head: [["Client", "Items", "Price", "Date", "Status"]],
-      body: serverSales.map((s: Sale) => [s.name ?? "-", s.items?.length ?? 0, `₦${parseFloat(s.total_cost).toLocaleString()}`, s.date_sold ?? "-", (s.payment_status ?? "pending").toUpperCase()]),
+      body: serverSales.map((s: Sale) => [
+        s.name ?? "-", s.items?.length ?? 0,
+        `₦${parseFloat(s.total_cost).toLocaleString()}`,
+        s.date_sold ?? "-",
+        (s.payment_status ?? "pending").toUpperCase(),
+      ]),
       headStyles: { fillColor: [30, 41, 59] },
     });
-    doc.save(`sales_report.pdf`);
+    doc.save("sales_report.pdf");
   };
 
-  // --- SKELETON LOADER (Fixes Layout Shift) ---
   if (isLoading && serverSales.length === 0) {
     return (
       <DashboardLayout>
         <div className="p-6 space-y-6 animate-pulse w-full">
-          {/* Mock Customer Search Area */}
-          <div className="h-24 bg-slate-200 rounded-lg w-full border border-slate-100"></div>
-          
-          {/* Mock Export Button Area */}
+          <div className="h-24 bg-slate-200 rounded-lg w-full border border-slate-100" />
           <div className="flex justify-end">
-            <div className="h-10 bg-slate-200 rounded-md w-32"></div>
+            <div className="h-10 bg-slate-200 rounded-md w-32" />
           </div>
-          
-          {/* Mock Table Area */}
-          <div className="h-96 bg-slate-200 rounded-lg w-full border border-slate-100 mt-6"></div>
+          <div className="h-96 bg-slate-200 rounded-lg w-full border border-slate-100 mt-6" />
         </div>
       </DashboardLayout>
     );
@@ -293,7 +418,7 @@ export default function SalesPage() {
           totalCost={totalCost}
           applyTax={applyTax}
           onTaxChange={setApplyTax}
-          staffList={HARDCODED_STAFF}
+          staffList={staffList}
           selectedStaff={selectedStaff}
           onStaffChange={setSelectedStaff}
           isSubmitting={isSubmitting}
@@ -303,42 +428,41 @@ export default function SalesPage() {
           onCostChange={(cost) => updateCurrentItem({ cost })}
           onQuantityChange={(quantity) => updateCurrentItem({ quantity })}
           onAddItem={async () => {
-              setIsSubmitting(true);
-              try {
-                 const qty = currentItem.quantity || 1;
-                 for (let i = 0; i < qty; i++) {
-                    const assignment = await assignRandomTool(currentItem);
-                    addItem({
-                       id: window.crypto.randomUUID(), 
-                       tool_id: assignment.assigned_tool_id,
-                       equipment: assignment.tool_name,
-                       equipment_type: currentItem.selectedEquipmentType || "",
-                       cost: currentItem.cost, 
-                       category: currentItem.selectedCategory,
-                       serial_set: [...(assignment.serial_set || [])],
-                       assigned_tool_id: assignment.assigned_tool_id,
-                    });
-                    setDisplayedAssignment(assignment); 
-                 }
-              } catch (err: any) { toast.error(err.message); }
-              finally { setIsSubmitting(false); }
+            setIsSubmitting(true);
+            try {
+              const qty = currentItem.quantity || 1;
+              for (let i = 0; i < qty; i++) {
+                const assignment = await assignRandomTool(currentItem);
+                addItem({
+                  id: window.crypto.randomUUID(),
+                  tool_id: assignment.assigned_tool_id,
+                  equipment: assignment.tool_name,
+                  equipment_type: currentItem.selectedEquipmentType || "",
+                  cost: currentItem.cost,
+                  category: currentItem.selectedCategory,
+                  serial_set: [...(assignment.serial_set || [])],
+                  assigned_tool_id: assignment.assigned_tool_id,
+                });
+                setDisplayedAssignment(assignment);
+              }
+            } catch (err: any) { toast.error(err.message); }
+            finally { setIsSubmitting(false); }
           }}
           onRemoveItem={handleRemoveItem}
           filteredGroupedTools={groupedTools}
           onPaymentPlanChange={(v) => updateSaleDetails({ payment_plan: v })}
           onInitialDepositChange={(v) => updateSaleDetails({ initial_deposit: v })}
           onPaymentMonthsChange={(v) => updateSaleDetails({ payment_months: v })}
-          //onExpiryDateChange={(v) => updateSaleDetails({ expiry_date: v })}
           onSaveDraft={() => handleSaveSale("draft")}
           onSaveAndSend={() => handleSaveSale("send")}
-          onCancel={() => { resetForm(); setOpen(false); }}
+          onCancel={() => handleSaveSale("cancel")}
         />
 
         <SalesTable
-          sales={serverSales} 
+          sales={serverSales}
           tools={tools}
-          staffList={HARDCODED_STAFF} 
-          loading={isFetching} // Connects table's internal loader to React Query
+          staffList={staffList}
+          loading={isFetching}
           currentPage={currentPage}
           totalPages={totalPages}
           totalItems={totalItems}
@@ -346,21 +470,21 @@ export default function SalesPage() {
           filterStartDate={startDate}
           filterEndDate={endDate}
           onDateChange={(start, end) => { setStartDate(start); setEndDate(end); setCurrentPage(1); }}
+          showDrafts={showDrafts}
+          onDeleteDraft={handleDeleteDraft}
+          onDraftFilterChange={(val) => { setShowDrafts(val); setCurrentPage(1); }}
           onEditStatus={(sale) => {
             setEditingSale(sale);
             setNewPaymentStatus(sale.payment_status || "pending");
             setEditStatusOpen(true);
           }}
-          // NEW PROP INTEGRATED HERE
+          onResumeDraft={handleResumeDraft}
           onMarkOverdue={async (sale) => {
             try {
-              // Reusing your existing api.updateSaleStatus so everything remains completely consistent
               await api.updateSaleStatus(sale.id, "overdue");
-              refetch(); // This instantly triggers React Query to fetch fresh data and update the UI
+              refetch();
               toast.success("Customer marked as Overdue");
-            } catch (error) {
-              toast.error("Failed to mark as overdue");
-            }
+            } catch { toast.error("Failed to mark as overdue"); }
           }}
           onViewSerials={async (tool) => {
             const toolId = tool.id || (tool as any).assigned_tool_id;
@@ -371,44 +495,45 @@ export default function SalesPage() {
           }}
         />
 
-        <EditStatusDialog 
-          open={editStatusOpen} 
-          onOpenChange={setEditStatusOpen} 
-          sale={editingSale} 
-          paymentStatus={newPaymentStatus} 
-          onStatusChange={setNewPaymentStatus} 
-          isUpdating={isUpdatingStatus} 
+        <EditStatusDialog
+          open={editStatusOpen}
+          onOpenChange={setEditStatusOpen}
+          sale={editingSale}
+          paymentStatus={newPaymentStatus}
+          onStatusChange={setNewPaymentStatus}
+          isUpdating={isUpdatingStatus}
           onUpdate={async () => {
             setIsUpdatingStatus(true);
             try {
               await api.updateSaleStatus(editingSale.id, newPaymentStatus);
-              refetch(); // Instantly update the table via React Query
+              refetch();
               setEditStatusOpen(false);
               toast.success("Status Updated");
-            } catch { toast.error("Failed"); } finally { setIsUpdatingStatus(false); }
-          }} 
+            } catch { toast.error("Failed"); }
+            finally { setIsUpdatingStatus(false); }
+          }}
         />
-        
-        <ViewSerialsDialog 
-           open={viewingSerials.open} 
-           onOpenChange={(o) => setViewingSerials(p => ({ ...p, open: o }))} 
-           onClose={() => setViewingSerials(p => ({ ...p, open: false }))} 
-           tool={viewingSerials.tool || {}} 
-           soldSerials={viewingSerials.soldSerials || []} 
+
+        <ViewSerialsDialog
+          open={viewingSerials.open}
+          onOpenChange={(o) => setViewingSerials(p => ({ ...p, open: o }))}
+          onClose={() => setViewingSerials(p => ({ ...p, open: false }))}
+          tool={viewingSerials.tool || {}}
+          soldSerials={viewingSerials.soldSerials || []}
         />
-        
-        <EquipmentTypeModal 
-          open={showEquipmentTypeModal} 
-          onOpenChange={setShowEquipmentTypeModal} 
-          onSelect={handleEquipmentTypeSelect} 
-          selectedType={currentItem.selectedEquipmentType || ""} 
-          onCancel={() => setShowEquipmentTypeModal(false)} 
+
+        <EquipmentTypeModal
+          open={showEquipmentTypeModal}
+          onOpenChange={setShowEquipmentTypeModal}
+          onSelect={handleEquipmentTypeSelect}
+          selectedType={currentItem.selectedEquipmentType || ""}
+          onCancel={() => setShowEquipmentTypeModal(false)}
         />
-        
+
         {displayedAssignment && (
-          <AssignmentModal 
-            assignment={displayedAssignment} 
-            onClose={() => setDisplayedAssignment(null)} 
+          <AssignmentModal
+            assignment={displayedAssignment}
+            onClose={() => setDisplayedAssignment(null)}
           />
         )}
       </div>

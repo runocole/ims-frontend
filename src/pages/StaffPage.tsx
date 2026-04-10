@@ -79,7 +79,7 @@ const StaffPage = () => {
   };
 
   // ✅ Updated to navigate to your new StaffProfileView page
-  const handleViewProfile = (staffId: string, staffName: string) => {
+  const handleViewProfile = (staffName: string) => {
     const encodedName = encodeURIComponent(staffName);
     navigate(`/sales/staff/${encodedName}`, { state: { staffEmail: "" } });
   };
@@ -171,7 +171,7 @@ const StaffPage = () => {
                           variant="outline" 
                           size="sm" 
                           className="border-blue-700 hover:bg-blue-800 text-blue-100"
-                          onClick={() => handleViewProfile(staff.id, staff.name)}
+                          onClick={() => handleViewProfile(staff.name)}
                         >
                           View Profile
                         </Button>

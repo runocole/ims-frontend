@@ -19,7 +19,7 @@ import axios from "axios";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const API_URL = "http://127.0.0.1:8000/api";
+const API_URL = "https://inventory.oticgs.com/api";
 
 const authHeader = () => {
   const token = localStorage.getItem("access") || localStorage.getItem("token");
@@ -149,6 +149,39 @@ const CodesManagement = () => {
   // NEW: State for email sending progress
   const [sendingEmails, setSendingEmails] = useState(false);
 
+  const processBatchItems = (data: BatchItemsData): BatchItemsData => {
+    const validSoldStatuses = ["ongoing", "completed", "overdue"];
+    
+    // 1. Keep only real sales in the Sold table
+    const actualSold = data.sold.filter(item => {
+      const status = (item.payment_status || "").toLowerCase().trim();
+      return validSoldStatuses.includes(status);
+    });
+
+    // 2. Identify the drafts/pending items that shouldn't be in the Sold table
+    const pendingDrafts = data.sold.filter(item => {
+      const status = (item.payment_status || "").toLowerCase().trim();
+      return !validSoldStatuses.includes(status);
+    });
+
+    // 3. Move the pending drafts back into the In Stock array and clear their customer data
+    const actualInStock = [
+      ...data.in_stock, 
+      ...pendingDrafts.map(draft => ({
+        ...draft,
+        status: "not sold",
+        payment_status: "draft",
+        customer_name: "",  // Clear customer info since it's just a draft
+        customer_email: ""
+      }))
+    ];
+
+    return { 
+      in_stock: actualInStock, 
+      sold: actualSold 
+    };
+  };
+
   // ── Fetch all batches ─────────────────────────────────────────────────────
 
   const fetchBatchList = async () => {
@@ -174,7 +207,8 @@ const CodesManagement = () => {
     setLoadingItems(true);
     try {
       const data = await fetchBatchItems(batch.id);
-      setBatchItems(data);
+      // 👇 Change this line to apply the filter 👇
+      setBatchItems(processBatchItems(data)); 
     } catch {
       toast({ title: "Error", description: "Failed to load batch contents.", variant: "destructive" });
     } finally {
@@ -194,7 +228,8 @@ const CodesManagement = () => {
     setLoadingItems(true);
     try {
       const data = await fetchBatchItems(batch.id);
-      setBatchItems(data);
+      // 👇 Change this line to apply the filter 👇
+      setBatchItems(processBatchItems(data));
     } catch {
       toast({ title: "Error", description: "Failed to refresh batch.", variant: "destructive" });
     } finally {
@@ -514,9 +549,9 @@ const CodesManagement = () => {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        filteredList.map((item) => (
+                        filteredList.map((item, index) => (
                           <TableRow
-                            key={item.serial}
+                            key={`${item.serial}-${index}`}
                             className="border-blue-900/50 hover:bg-blue-900/10 transition-colors"
                           >
                             <TableCell>
@@ -665,82 +700,89 @@ const CodesManagement = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {batches.map((batch) => {
-              const uploadState = uploadProgress[batch.id] || "idle";
-              return (
-                <div
-                  key={batch.id}
-                  className="group relative rounded-xl border border-blue-900/50 bg-blue-950/40 hover:bg-blue-900/30 hover:border-blue-700 transition-all cursor-pointer"
-                  onClick={() => openBatchFolder(batch)}
-                >
-                  <div className="p-5">
-                    <div className="flex items-start gap-3">
-                      <Folder className="h-10 w-10 text-yellow-400 flex-shrink-0 mt-0.5 group-hover:text-yellow-300 transition-colors" />
-                      <div className="min-w-0 flex-1">
-                        <p className="font-bold text-white text-base truncate">{batch.batch_number}</p>
-                        <p className="text-xs text-blue-400 mt-0.5">{batch.supplier} · {batch.received_date}</p>
-                        {batch.notes && (
-                          <p className="text-xs text-blue-600 mt-1 truncate">{batch.notes}</p>
-                        )}
-                      </div>
-                    </div>
+  {Array.isArray(batches) ? (
+    batches.map((batch) => {
+      const uploadState = uploadProgress[batch.id] || "idle";
+      return (
+        <div
+          key={batch.id}
+          className="group relative rounded-xl border border-blue-900/50 bg-blue-950/40 hover:bg-blue-900/30 hover:border-blue-700 transition-all cursor-pointer"
+          onClick={() => openBatchFolder(batch)}
+        >
+          <div className="p-5">
+            <div className="flex items-start gap-3">
+              <Folder className="h-10 w-10 text-yellow-400 flex-shrink-0 mt-0.5 group-hover:text-yellow-300 transition-colors" />
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-white text-base truncate">{batch.batch_number}</p>
+                <p className="text-xs text-blue-400 mt-0.5">{batch.supplier} · {batch.received_date}</p>
+                {batch.notes && (
+                  <p className="text-xs text-blue-600 mt-1 truncate">{batch.notes}</p>
+                )}
+              </div>
+            </div>
 
-                    <div className="mt-4 flex gap-3">
-                      <div className="flex-1 rounded-lg bg-blue-900/40 px-3 py-2 text-center">
-                        <p className="text-lg font-bold text-white">{batch.in_stock_count}</p>
-                        <p className="text-[10px] text-blue-400 uppercase tracking-wider">In Stock</p>
-                      </div>
-                      <div className="flex-1 rounded-lg bg-teal-900/30 px-3 py-2 text-center">
-                        <p className="text-lg font-bold text-teal-300">{batch.sold_count}</p>
-                        <p className="text-[10px] text-teal-500 uppercase tracking-wider">Sold</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div
-                    className="flex gap-2 px-4 pb-4"
-                    onClick={(e) => e.stopPropagation()} 
-                  >
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1 gap-1.5 border-blue-700 bg-blue-950 text-blue-300 hover:bg-blue-800 hover:text-white h-8 text-xs"
-                      onClick={(e) => triggerUpload(batch.id, e)}
-                      disabled={uploadState === "uploading"}
-                    >
-                      {uploadState === "uploading" ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : uploadState === "done" ? (
-                        <Check className="h-3 w-3 text-green-400" />
-                      ) : uploadState === "error" ? (
-                        <X className="h-3 w-3 text-red-400" />
-                      ) : (
-                        <Upload className="h-3 w-3" />
-                      )}
-                      {uploadState === "uploading" ? "Uploading…"
-                        : uploadState === "done" ? "Uploaded!"
-                        : uploadState === "error" ? "Error"
-                        : "Upload CSV"}
-                    </Button>
-
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1 gap-1.5 border-teal-700 bg-teal-950/30 text-teal-300 hover:bg-teal-800 hover:text-white h-8 text-xs"
-                      onClick={() =>
-                        downloadBatchCSV(batch.id, batch.batch_number).catch(() =>
-                          toast({ title: "Download Failed", variant: "destructive" })
-                        )
-                      }
-                    >
-                      <Download className="h-3 w-3" />
-                      Download
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
+            <div className="mt-4 flex gap-3">
+              <div className="flex-1 rounded-lg bg-blue-900/40 px-3 py-2 text-center">
+                <p className="text-lg font-bold text-white">{batch.in_stock_count}</p>
+                <p className="text-[10px] text-blue-400 uppercase tracking-wider">In Stock</p>
+              </div>
+              <div className="flex-1 rounded-lg bg-teal-900/30 px-3 py-2 text-center">
+                <p className="text-lg font-bold text-teal-300">{batch.sold_count}</p>
+                <p className="text-[10px] text-teal-500 uppercase tracking-wider">Sold</p>
+              </div>
+            </div>
           </div>
+
+          <div
+            className="flex gap-2 px-4 pb-4"
+            onClick={(e) => e.stopPropagation()} 
+          >
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 gap-1.5 border-blue-700 bg-blue-950 text-blue-300 hover:bg-blue-800 hover:text-white h-8 text-xs"
+              onClick={(e) => triggerUpload(batch.id, e)}
+              disabled={uploadState === "uploading"}
+            >
+              {uploadState === "uploading" ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : uploadState === "done" ? (
+                <Check className="h-3 w-3 text-green-400" />
+              ) : uploadState === "error" ? (
+                <X className="h-3 w-3 text-red-400" />
+              ) : (
+                <Upload className="h-3 w-3" />
+              )}
+              {uploadState === "uploading" ? "Uploading…"
+                : uploadState === "done" ? "Uploaded!"
+                : uploadState === "error" ? "Error"
+                : "Upload CSV"}
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 gap-1.5 border-teal-700 bg-teal-950/30 text-teal-300 hover:bg-teal-800 hover:text-white h-8 text-xs"
+              onClick={() =>
+                downloadBatchCSV(batch.id, batch.batch_number).catch(() =>
+                  toast({ title: "Download Failed", variant: "destructive" })
+                )
+              }
+            >
+              <Download className="h-3 w-3" />
+              Download
+            </Button>
+          </div>
+        </div>
+      );
+    })
+  ) : (
+    <div className="col-span-full py-10 text-center bg-red-900/20 border border-red-900/50 rounded-lg">
+      <p className="text-red-400">Error: Received invalid data format from the server.</p>
+      <p className="text-xs text-red-500 mt-1">Check the Network tab to see the actual API response.</p>
+    </div>
+  )}
+</div>
         )}
       </div>
 

@@ -1,6 +1,72 @@
 import axios from "axios";
 
-const API_URL = "http://127.0.0.1:8000/api";
+const API_URL = "https://inventory.oticgs.com/api";
+
+// ----------------------------
+// 1. CREATE CENTRAL AXIOS INSTANCE
+// ----------------------------
+const api = axios.create({
+  baseURL: API_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+// ----------------------------
+// 2. REQUEST INTERCEPTOR (Fixes Amnesia/Reload)
+// ----------------------------
+api.interceptors.request.use(
+  (config) => {
+    // We can use "access" directly here which matches your constants file
+    const token = localStorage.getItem("access");
+    if (token && config.headers) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// ----------------------------
+// 3. RESPONSE INTERCEPTOR (Fixes Disconnects/Inactivity)
+// ----------------------------
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      try {
+        const refreshToken = localStorage.getItem("refresh");
+        
+        // Ask backend for a new access token
+        const response = await axios.post(`${API_URL}/token/refresh/`, {
+          refresh: refreshToken,
+        });
+
+        // Save the new access token
+        const newAccessToken = response.data.access;
+        localStorage.setItem("access", newAccessToken);
+
+        // Update the failed request and try again automatically
+        if (originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+        }
+        return api(originalRequest);
+      } catch (refreshError) {
+        console.error("Session expired. Please log in again.");
+        localStorage.removeItem("access");
+        localStorage.removeItem("refresh");
+        localStorage.removeItem("user");
+        window.location.href = "/login";
+        return Promise.reject(refreshError);
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 // ----------------------------
 // TYPES
@@ -25,24 +91,11 @@ export interface Supplier {
 }
 
 // ----------------------------
-// AUTH HEADER
-// ----------------------------
-const authHeader = () => {
-  // Check for both common token names just in case!
-  const token = localStorage.getItem("access") || localStorage.getItem("token");
-  console.log("Token being sent:", token); // Add this line to debug
-  // If your Django backend uses standard DRF Tokens instead of JWT, 
-  // you might need to change "Bearer" to "Token" below.
-  return {
-    Authorization: `Bearer ${token}`, 
-  };
-};
-
-// ----------------------------
 // AUTH
 // ----------------------------
 export const loginUser = async (email: string, password: string) => {
   try {
+    // Login doesn't use the interceptor because we don't have a token yet
     const response = await axios.post(`${API_URL}/auth/login/`, { email, password });
     return response.data;
   } catch (error) {
@@ -59,18 +112,12 @@ export const loginUser = async (email: string, password: string) => {
 // STAFF
 // ----------------------------
 export const registerStaff = async (name: string, email: string, phone: string) => {
-  const response = await axios.post(
-    `${API_URL}/auth/add-staff/`,
-    { name, email, phone },
-    { headers: authHeader() }
-  );
+  const response = await api.post(`/auth/add-staff/`, { name, email, phone });
   return response.data;
 };
 
 export const getStaff = async () => {
-  const response = await axios.get(`${API_URL}/auth/staff/`, {
-    headers: authHeader(),
-  });
+  const response = await api.get(`/auth/staff/`);
   return response.data;
 };
 
@@ -80,87 +127,45 @@ export const getStaff = async () => {
 export const getCustomers = async (page = 1, search = "") => {
   const params: Record<string, any> = { page };
   if (search) params.search = search;
-  const response = await axios.get(`${API_URL}/customers/`, { params, headers: authHeader() });
-  return response.data;  // return full paginated object {count, next, previous, results}
+  const response = await api.get(`/customers/`, { params });
+  return response.data; 
 };
 
-export const registerCustomer = async (
-  name: string,
-  email: string,
-  phone: string,
-  state: string
-) => {
-  const response = await axios.post(
-    `${API_URL}/customers/add`,
-    { name, email, phone, state },
-    { headers: authHeader() }
-  );
+export const registerCustomer = async (name: string, email: string, phone: string, state: string) => {
+  const response = await api.post(`/customers/add`, { name, email, phone, state });
   return response.data;
 };
 
 export const activateCustomer = async (customerId: number) => {
-  const response = await axios.post(
-    `${API_URL}/customers/activate/${customerId}/`,
-    {},
-    { headers: authHeader() }
-  );
+  const response = await api.post(`/customers/activate/${customerId}/`, {});
   return response.data;
 };
 
-
 export const fetchCustomerOwingData = async (): Promise<any> => {
-  try {
-    const response = await axios.get(`${API_URL}/customer-owing/`, {  // ✅ Uses API_URL and correct path
-      headers: authHeader(),
-    });
-    
-    console.log("Customer Owing API Response:", response.data);
-    return response.data;
-  } catch (error: any) {
-    console.error('Error fetching customer owing data:', error);
-    
-  
-    if (error.response) {
-      console.error('Status:', error.response.status);
-      console.error('Data:', error.response.data);
-      console.error('URL called:', error.config?.url);
-    } else if (error.request) {
-      console.error('No response received. Check:');
-      console.error('- Is Django server running?');
-      console.error('- Is the URL correct?');
-    }
-    
-    throw error;
-  }
+  const response = await api.get(`/customer-owing/`);
+  return response.data;
 };
+
 // ----------------------------
 // SALES
 // ----------------------------
 export const getSales = async () => {
-  const response = await axios.get(`${API_URL}/sales/`, {
-    headers: authHeader(),
-  });
+  const response = await api.get(`/sales/`);
   return response.data;
 };
 
 export const getSaleDetail = async (id: number) => {
-  const response = await axios.get(`${API_URL}/sales/${id}/`, {
-    headers: authHeader(),
-  });
+  const response = await api.get(`/sales/${id}/`);
   return response.data;
 };
 
 export const createSale = async (saleData: any) => {
-  const response = await axios.post(`${API_URL}/sales/`, saleData, {
-    headers: authHeader(),
-  });
+  const response = await api.post(`/sales/`, saleData);
   return response.data;
 };
 
 export const updateSale = async (id: number, saleData: any) => {
-  const response = await axios.put(`${API_URL}/sales/${id}/`, saleData, {
-    headers: authHeader(),
-  });
+  const response = await api.put(`/sales/${id}/`, saleData);
   return response.data;
 };
 
@@ -168,9 +173,7 @@ export const updateSale = async (id: number, saleData: any) => {
 // PAYMENTS
 // ----------------------------
 export const getPayments = async () => {
-  const response = await axios.get(`${API_URL}/payments/`, {
-    headers: authHeader(),
-  });
+  const response = await api.get(`/payments/`);
   return response.data;
 };
 
@@ -178,9 +181,7 @@ export const getPayments = async () => {
 // TOOLS
 // ----------------------------
 export const getTools = async () => {
-  const response = await axios.get(`${API_URL}/tools/`, {
-    headers: authHeader(),
-  });
+  const response = await api.get(`/tools/`);
   return response.data;
 };
 
@@ -192,14 +193,9 @@ export const createTool = async (toolData: {
   category?: string;
   stock?: number;
   supplier?: string;
-  expiry_date?: string; // Add expiry_date
+  expiry_date?: string; 
 }) => {
-  const response = await axios.post(`${API_URL}/tools/`, toolData, {
-    headers: {
-      ...authHeader(),
-      "Content-Type": "application/json",
-    },
-  });
+  const response = await api.post(`/tools/`, toolData);
   return response.data;
 };
 
@@ -214,39 +210,20 @@ export const updateTool = async (
     category: string;
     stock: number;
     supplier: string;
-    expiry_date: string; // Add expiry_date
+    expiry_date: string; 
   }>
 ) => {
-  const response = await axios.patch(`${API_URL}/tools/${id}/`, updatedData, {
-    headers: {
-      ...authHeader(),
-      "Content-Type": "application/json",
-    },
-  });
+  const response = await api.patch(`/tools/${id}/`, updatedData);
   return response.data;
 };
 
 export const updateToolStatus = async (id: string, status: string) => {
-  const response = await fetch(`${API_URL}/tools/${id}/`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeader(),
-    },
-    body: JSON.stringify({ status }),
-  });
-
-  if (!response.ok) throw new Error("Failed to update tool status");
-  return await response.json();
+  const response = await api.patch(`/tools/${id}/`, { status });
+  return response.data;
 };
 
 export const deleteTool = async (id: string) => {
-  const response = await fetch(`${API_URL}/tools/${id}/`, {
-    method: "DELETE",
-    headers: authHeader(),
-  });
-
-  if (!response.ok) throw new Error("Failed to delete tool");
+  await api.delete(`/tools/${id}/`); // <--- FIXED THE TYPESCRIPT ERROR!
   return true;
 };
 
@@ -254,9 +231,7 @@ export const deleteTool = async (id: string) => {
 // DASHBOARD
 // ----------------------------
 export const fetchDashboardData = async () => {
-  const response = await axios.get(`${API_URL}/dashboard/summary/`, {
-    headers: authHeader(),
-  });
+  const response = await api.get(`/dashboard/summary/`);
   const data = response.data;
 
   return {
@@ -272,6 +247,7 @@ export const fetchDashboardData = async () => {
     expiringReceivers: data.expiringReceivers ?? data.expiring_receivers ?? [],
   };
 };
+
 // ----------------------------
 // EQUIPMENT TYPES
 // ----------------------------
@@ -284,57 +260,42 @@ export interface EquipmentType {
   created_at?: string;
 }
 
-// Get equipment by invoice
 export const getEquipmentByInvoice = async () => {
-  const response = await axios.get(`${API_URL}/equipment-types/by-invoice/`, { // ADD API_URL
-    headers: authHeader(),
-  });
+  const response = await api.get(`/equipment-types/by-invoice/`);
   return response.data;
 };
 
-// Get equipment types with optional filters
 export const getEquipmentTypes = async (filters?: { invoice_number?: string; category?: string }) => {
   const params = new URLSearchParams();
   if (filters?.invoice_number) params.append('invoice_number', filters.invoice_number);
   if (filters?.category) params.append('category', filters.category);
   
-  const response = await axios.get(`${API_URL}/equipment-types/?${params}`, { // ADD API_URL
-    headers: authHeader(),
-  });
+  const response = await api.get(`/equipment-types/?${params}`);
   return response.data;
 };
 
-// Create equipment type
 export const createEquipmentType = async (data: {
   name: string;
   default_cost: string;
   category: string;
   invoice_number?: string;
 }) => {
-  const response = await axios.post(`${API_URL}/equipment-types/`, data, { // ADD API_URL
-    headers: authHeader(),
-  });
+  const response = await api.post(`/equipment-types/`, data);
   return response.data;
 };
 
-// Update equipment type
 export const updateEquipmentType = async (id: string, data: {
   name: string;
   default_cost: string;
   category: string;
   invoice_number?: string;
 }) => {
-  const response = await axios.put(`${API_URL}/equipment-types/${id}/`, data, { // ADD API_URL
-    headers: authHeader(),
-  });
+  const response = await api.put(`/equipment-types/${id}/`, data);
   return response.data;
 };
 
-// Delete equipment type
 export const deleteEquipmentType = async (id: string) => {
-  const response = await axios.delete(`${API_URL}/equipment-types/${id}/`, { // ADD API_URL
-    headers: authHeader(),
-  });
+  const response = await api.delete(`/equipment-types/${id}/`);
   return response.data;
 };
 
@@ -342,9 +303,7 @@ export const deleteEquipmentType = async (id: string) => {
 // SUPPLIERS
 // ----------------------------
 export const getSuppliers = async () => {
-  const response = await axios.get(`${API_URL}/suppliers/`, {
-    headers: authHeader(),
-  });
+  const response = await api.get(`/suppliers/`);
   return response.data;
 };
 
@@ -354,12 +313,7 @@ export const createSupplier = async (supplierData: {
   phone?: string;
   address?: string;
 }) => {
-  const response = await axios.post(`${API_URL}/suppliers/`, supplierData, {
-    headers: {
-      ...authHeader(),
-      "Content-Type": "application/json",
-    },
-  });
+  const response = await api.post(`/suppliers/`, supplierData);
   return response.data;
 };
 
@@ -372,19 +326,12 @@ export const updateSupplier = async (
     address: string;
   }>
 ) => {
-  const response = await axios.patch(`${API_URL}/suppliers/${id}/`, supplierData, {
-    headers: {
-      ...authHeader(),
-      "Content-Type": "application/json",
-    },
-  });
+  const response = await api.patch(`/suppliers/${id}/`, supplierData);
   return response.data;
 };
 
 export const deleteSupplier = async (id: string) => {
-  const response = await axios.delete(`${API_URL}/suppliers/${id}/`, {
-    headers: authHeader(),
-  });
+  const response = await api.delete(`/suppliers/${id}/`);
   return response.data;
 };
 
@@ -392,24 +339,18 @@ export const deleteSupplier = async (id: string) => {
 // CODE MANAGEMENT
 // ----------------------------
 export const getReceiverCodes = async () => {
-  const response = await axios.get(`${API_URL}/codes/management/`, {
-    headers: authHeader(),
-  });
+  const response = await api.get(`/codes/management/`);
   return response.data;
 };
 
 export const saveReceiverCode = async (serial: string, code: string, duration: string) => {
-  const response = await axios.post(
-    `${API_URL}/codes/management/save/`,
-    { serial, code, duration },
-    { headers: authHeader() }
-  );
+  const response = await api.post(`/codes/management/save/`, { serial, code, duration });
   return response.data;
 };
 
 export const getMyCodes = async () => {
-  const response = await axios.get(`${API_URL}/codes/customer/`, {
-    headers: authHeader(),
-  });
-  return response.data; // This will return only codes belonging to the logged-in customer
+  const response = await api.get(`/codes/customer/`);
+  return response.data;
 };
+
+export default api;

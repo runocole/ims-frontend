@@ -965,7 +965,7 @@ const ToolsSummary: React.FC = () => {
               </thead>
 
               <tbody>
-                {Object.entries(groupedByInvoice).map(([invoiceNo, group]) =>
+                {Object.entries(groupedByInvoice).map(([, group]) =>
                   group.map((item, index) => {
                     const hasExpiryDate = !!item.expiry_date;
                     const isExpired = hasExpiryDate && isDateExpired(item.expiry_date);

@@ -217,7 +217,7 @@ const CustomersPage = () => {
         phone: newCustomer.phone,
         state: newCustomer.state
       }));
-      window.location.href = '/sales';
+      window.location.href = '/inventory/sales';
     }
   };
 

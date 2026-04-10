@@ -5,6 +5,8 @@ import './index.css';
 // 1. Import the Query tools
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+console.log("🚀 VERSION 2.0 - NO LOCALHOST");
+
 // 2. Create the client (the actual cache engine)
 const queryClient = new QueryClient({
   defaultOptions: {

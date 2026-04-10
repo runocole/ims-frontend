@@ -3,10 +3,9 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Card } from "../components/ui/card";
-import authHero from "@/assets/auth-hero.jpg";
+import authHero from "@/assets/t20.jpg";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Eye, EyeOff } from "lucide-react";
-import { ACCESS_TOKEN, REFRESH_TOKEN } from "../constants";
 import logo from "../assets/otic-logo.png";
 
 const Login = () => {
@@ -20,7 +19,7 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/api/auth/login/", {
+      const res = await fetch("https://inventory.oticgs.com/api/auth/login/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -35,8 +34,9 @@ const Login = () => {
         return;
       }
 
-      localStorage.setItem(ACCESS_TOKEN, data.access);
-      localStorage.setItem(REFRESH_TOKEN, data.refresh);
+      // FIX: Explicitly save as "access" and "refresh" to match api.ts
+      localStorage.setItem("access", data.access);
+      localStorage.setItem("refresh", data.refresh);
       localStorage.setItem("user", JSON.stringify(data.user));
       localStorage.setItem("userRole", data.user.role);
 

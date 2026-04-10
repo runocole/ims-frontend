@@ -16,16 +16,12 @@ import { Progress } from "../components/ui/progress";
 // ------------------------------
 const STATUS_OVERDUE_VARIANTS  = ["overdue"];
 const STATUS_PAID_VARIANTS     = ["completed", "paid", "fully-paid", "fully_paid"];
-const STATUS_ONGOING_VARIANTS  = ["on-track", "due-soon", "ongoing"];
 
 const isStatusOverdue = (status: string) =>
   STATUS_OVERDUE_VARIANTS.includes((status || "").toLowerCase().trim());
 
 const isStatusPaid = (status: string) =>
   STATUS_PAID_VARIANTS.includes((status || "").toLowerCase().trim());
-
-const isStatusOngoing = (status: string) =>
-  STATUS_ONGOING_VARIANTS.includes((status || "").toLowerCase().trim());
 
 // Maps DB status to display label
 const getStatusLabel = (status: string) => {

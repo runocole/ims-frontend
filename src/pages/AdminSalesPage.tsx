@@ -8,7 +8,6 @@ import {
   Package, CreditCard, UserSearch, ChevronLeft, ChevronRight 
 } from "lucide-react"; 
 import { DashboardLayout } from "../components/DashboardLayout";
-import jsPDF from "jspdf";
 import "jspdf-autotable";
 import axios from "axios";
 import { debounce } from "lodash";
@@ -37,7 +36,7 @@ interface Sale {
   staff_name?: string;
 }
 
-const API_URL = "http://127.0.0.1:8000/api";
+const API_URL = "https://inventory.oticgs.com/api";
 
 const AdminSalesPage: React.FC = () => {
   const navigate = useNavigate(); 
@@ -144,19 +143,6 @@ const AdminSalesPage: React.FC = () => {
     return `${items[0].equipment} +${items.length - 1} more`;
   };
 
-  const calculateRemainingBalance = (sale: Sale) => {
-    const total = parseFloat(sale.total_cost || "0");
-    const deposit = parseFloat(sale.initial_deposit || "0");
-    return total - deposit;
-  };
-
-  const calculateMonthlyPayment = (sale: Sale) => {
-    if (!sale.payment_months || !sale.initial_deposit) return 0;
-    const remaining = calculateRemainingBalance(sale);
-    const months = parseInt(sale.payment_months);
-    return months > 0 ? remaining / months : 0;
-  };
-
   const handleViewInvoice = (sale: Sale) => {
     localStorage.setItem("currentInvoice", JSON.stringify(sale));
     navigate(`/invoice/${sale.invoice_number || sale.id}`);
@@ -223,26 +209,31 @@ const AdminSalesPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className={loading ? "opacity-40" : "opacity-100"}>
-                  {sales.map((sale) => (
+                {Array.isArray(sales) && sales.length > 0 ? (
+                  sales.map((sale) => (
                     <tr key={sale.id} className="border-b border-slate-700 hover:bg-slate-800/50 transition-colors">
-                      <td className="p-3 text-white font-medium">{sale.name}</td>
-                      <td className="p-3 text-gray-300">{sale.phone}</td>
-                      <td className="p-3 text-gray-300">{sale.state}</td>
+                      <td className="p-3 text-white font-medium">{sale.name || "Unknown"}</td>
+                      <td className="p-3 text-gray-300">{sale.phone || "-"}</td>
+                      <td className="p-3 text-gray-300">{sale.state || "-"}</td>
                       <td className="p-3 text-gray-300">{formatEquipment(sale.items)}</td>
-                      <td className="p-3 text-green-400 font-semibold">₦{parseFloat(sale.total_cost).toLocaleString()}</td>
+                      <td className="p-3 text-green-400 font-semibold">
+                        ₦{sale.total_cost ? parseFloat(sale.total_cost).toLocaleString() : "0"}
+                      </td>
                       <td className="p-3 text-gray-300">{sale.payment_plan || "-"}</td>
                       <td className="p-3">
-                        {sale.initial_deposit ? (
-                          <div className="text-yellow-400 font-semibold">₦{parseFloat(sale.initial_deposit).toLocaleString()}</div>
+                        {sale.initial_deposit && parseFloat(sale.initial_deposit) > 0 ? (
+                          <div className="text-yellow-400 font-semibold">
+                            ₦{parseFloat(sale.initial_deposit).toLocaleString()}
+                          </div>
                         ) : "-"}
                       </td>
                       <td className="p-3 text-blue-400 font-semibold">{sale.payment_months ? `${sale.payment_months} months` : "-"}</td>
                       <td className="p-3">
                         <span className={`px-2.5 py-0.5 rounded-full text-[10px] uppercase border font-bold ${getStatusColor(sale.payment_status || '')}`}>
-                          {sale.payment_status}
+                          {sale.payment_status || "PENDING"}
                         </span>
                       </td>
-                      <td className="p-3 text-gray-300">{new Date(sale.date_sold).toLocaleDateString()}</td>
+                      <td className="p-3 text-gray-300">{sale.date_sold ? new Date(sale.date_sold).toLocaleDateString() : "-"}</td>
                       <td className="p-3 text-blue-300">{getStaffName(sale)}</td>
                       <td className="p-3 text-gray-400 font-mono text-xs">{sale.invoice_number || "-"}</td>
                       <td className="p-3">
@@ -256,8 +247,15 @@ const AdminSalesPage: React.FC = () => {
                         </div>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={13} className="text-center py-10 text-gray-400 bg-slate-800/20">
+                      {loading ? "Loading records..." : "No sales records found or data format error."}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
               </table>
             </div>
 

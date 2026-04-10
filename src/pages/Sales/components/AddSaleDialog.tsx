@@ -75,7 +75,6 @@ export const AddSaleDialog = ({
   onStaffChange,
   isSubmitting,
   onCategoryChange,
-  onEquipmentTypeChange,
   onToolSelect,
   onCostChange,
   onQuantityChange,

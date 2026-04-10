@@ -50,6 +50,6 @@ export const ToastProviderWrapper: React.FC<{ children: React.ReactNode }> = ({ 
 };
 
 // This makes `toast()` usable directly — same behavior as `useToast().toast()`
-export const toast = (props: ToastProps) => {
+export const toast = (_props: ToastProps) => {
   console.warn("⚠️ Direct `toast()` call requires wrapping the app in <ToastProviderWrapper>.");
 };

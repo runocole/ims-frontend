@@ -24,31 +24,15 @@ const MonthlyRevenuePage = lazy(() => import("./pages/MonthlyRevenuePage"));
 const CustomersPage = lazy(() => import("./pages/CustomersPage"));
 const ToolsSummary = lazy(() => import("./pages/ToolsSummary"));
 const AdminSalesPage = lazy(() => import("./pages/AdminSalesPage"));
-const LandingPage = lazy(() => import("./pages/LandingPage"));
+
 const CustomerOwing = lazy(() => import("./pages/CustomerOwing"));
-const BuyNow = lazy(() => import("./pages/BuyNow"));
-const Contact = lazy(() => import("./pages/Contact"));
-const About = lazy(() => import("./pages/About"));
-const Training = lazy(() => import("./pages/Training"));
-const CorsNetwork = lazy(() => import("./pages/CorsNetwork"));
-const CourseDetail = lazy(() => import("./pages/CourseDetail"));
-const Blog = lazy(() => import("./pages/Blog"));
-const BlogPost = lazy(() => import("./pages/BlogPost"));
-const Admin = lazy(() => import("./pages/Admin"));
-const AdminLogin = lazy(() => import("./pages/AdminLogin"));
-const CartPage = lazy(() => import("./pages/CartPage"));
-const ProductDetailPage = lazy(() => import("./pages/ProductDetailPage"));
 const CodesManagement = lazy(() => import("./pages/CodesManagement")); 
 const PurchasesPage = lazy(() => import("./pages/PurchasesPage"));
 const PurchasesIndex = lazy(() => import("./pages/PurchasesIndex"));
 const CodeSearch = lazy(() => import("./pages/CodeSearch"));
-
-// NOTE: We keep MobileNavigation as a normal import because it renders instantly on every page!
-import MobileNavigation from "./components/MobileNavigation";
+const QuotationsPage = lazy(() => import("./pages/QuotationsPage"));
 
 // --- CONTEXT ---
-import { CurrencyProvider } from './context/CurrencyContext';
-import { CartProvider } from './context/CartContext'; 
 import { ErrorBoundary } from "react-error-boundary";
 import type { FallbackProps } from "react-error-boundary";
 import { useLocation } from "react-router-dom";
@@ -130,12 +114,10 @@ const ErrorFallback = ({ error }: FallbackProps) => {
 const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
-      <CurrencyProvider>
-        <CartProvider>
           <TooltipProvider>
             <Toaster />
             <Sonner />
-            <BrowserRouter>
+            <BrowserRouter basename="/inventory">
               <RouteLogger />
               
               {/* 1. ErrorBoundary must wrap EVERYTHING that uses hooks/context */}
@@ -143,20 +125,7 @@ const App = () => {
                 <Suspense fallback={<PageLoader />}>
                   <Routes>
                     {/* --- Public Routes --- */}
-                    <Route path="/" element={<LandingPage />} />
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/about" element={<About />} />
-                    <Route path="/training" element={<Training />} />
-                    <Route path="/corsnetwork" element={<CorsNetwork />} />
-                    <Route path="/buynow" element={<BuyNow />} />
-                    <Route path="/contact" element={<Contact />} />
-                    <Route path="/blog" element={<Blog />} />
-                    <Route path="/cart" element={<CartPage />} />
-                    <Route path="/blog/:slug" element={<BlogPost />} />
-                    <Route path="/admin" element={<Admin />} />
-                    <Route path="/admin/login" element={<AdminLogin />} />
-                    <Route path="/product/:id" element={<ProductDetailPage />} />
-                    <Route path="/course/:courseId" element={<CourseDetail />} />
+                    <Route path="/" element={<Login />} />
                     <Route path="/code" element={<CodeSearch />} />
 
                     {/* --- Protected Routes --- */}
@@ -173,6 +142,7 @@ const App = () => {
                     <Route path="/settings" element={<PrivateRoute element={<Settings />} allowedRoles={["staff", "admin"]} />} />
                     <Route path="/customer/receivables" element={<PrivateRoute element={<CustomerOwing />} allowedRoles={["staff", "admin"]} />} />
                     <Route path="/codes-management" element={<PrivateRoute element={<CodesManagement />} allowedRoles={["staff", "admin"]} />} />
+                    <Route path="/quotations" element={<PrivateRoute element={<QuotationsPage />} allowedRoles={["admin", "staff"]} />} />
                     
                     <Route path="/dashboard" element={<PrivateRoute element={<AdminDashboard />} allowedRoles={["admin"]} />} />
                     <Route path="/admin/sales" element={<PrivateRoute element={<AdminSalesPage />} allowedRoles={["admin"]} />} />
@@ -188,16 +158,11 @@ const App = () => {
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </Suspense>
-
-                {/* 2. MobileNavigation is now INSIDE the ErrorBoundary */}
-                <MobileNavigation />
                 
               </ErrorBoundary>
 
             </BrowserRouter>
           </TooltipProvider>
-        </CartProvider>
-      </CurrencyProvider>
     </QueryClientProvider>
   );
 };
