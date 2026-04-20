@@ -50,7 +50,6 @@ interface AddSaleDialogProps {
   onPaymentPlanChange: (value: string) => void;
   onInitialDepositChange: (value: string) => void;
   onPaymentMonthsChange: (value: string) => void;
-  // REMOVED onExpiryDateChange from here!
   onSaveDraft: () => void;
   onSaveAndSend: () => void;
   onCancel: () => void;
@@ -83,7 +82,6 @@ export const AddSaleDialog = ({
   onPaymentPlanChange,
   onInitialDepositChange,
   onPaymentMonthsChange,
-  // REMOVED onExpiryDateChange from here!
   onSaveDraft,
   onSaveAndSend,
   onCancel
@@ -168,7 +166,6 @@ export const AddSaleDialog = ({
             onPaymentPlanChange={onPaymentPlanChange}
             onInitialDepositChange={onInitialDepositChange}
             onPaymentMonthsChange={onPaymentMonthsChange}
-            // REMOVED onExpiryDateChange from here!
           />
         </div>
 
@@ -193,7 +190,7 @@ export const AddSaleDialog = ({
 
           <Button
             onClick={onSaveAndSend}
-            disabled={isSubmitting || saleItems.length === 0}
+            disabled={isSubmitting || saleItems.length === 0 || (saleDetails.payment_plan === "Yes" && (!saleDetails.initial_deposit || parseFloat(saleDetails.initial_deposit) <= 0))}
             className="bg-blue-600 hover:bg-blue-700 text-white"
           >
             {isSubmitting ? "Processing..." : "Save & Send Bill"}

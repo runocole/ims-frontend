@@ -2,93 +2,122 @@ import { InvoiceTemplate } from "../components/InvoiceTemplate";
 import { Button } from "../components/ui/button";
 import { Printer, ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-// Import your layout component
-import { DashboardLayout } from "../components/DashboardLayout"; 
+import { DashboardLayout } from "../components/DashboardLayout";
 
 const InvoicePage = () => {
   const navigate = useNavigate();
-  
-  // 1. Get the data from localStorage
   const savedSale = localStorage.getItem("currentInvoice");
-  
-  // 2. Handle the empty state inside the layout so the sidebar still shows
+
   if (!savedSale || savedSale === "undefined") {
     return (
       <DashboardLayout>
         <div className="p-10 text-center text-white">
-          <p>No Invoice Data Found. Please go back to Sales.</p>
-          <Button onClick={() => navigate("/sales")} className="mt-4 italic bg-slate-800 hover:bg-slate-700">
-            <ArrowLeft className="w-4 h-4 mr-2" /> Return to Sales Table
+          <p>No Invoice Data Found. Please go back.</p>
+          <Button onClick={() => navigate(-1)} className="mt-4 italic bg-slate-800 hover:bg-slate-700">
+            <ArrowLeft className="w-4 h-4 mr-2" /> Go Back
           </Button>
         </div>
       </DashboardLayout>
     );
   }
-  
-  // Safely parse the main sale object
-  let sale;
+
+  let sale: any;
   try {
     sale = JSON.parse(savedSale);
-  } catch (error) {
-    console.error("Failed to parse sale from localStorage", error);
-    sale = {}; // Fallback to empty object to prevent crash
+  } catch {
+    sale = {};
   }
 
-  // Safely parse serials helper
   const safelyParseSerials = (serialData: any) => {
     if (Array.isArray(serialData)) return serialData;
     if (!serialData) return [];
-    try {
-      return JSON.parse(serialData);
-    } catch (e) {
-      return [serialData]; // If it fails to parse, just return it as a single-item array
-    }
+    try { return JSON.parse(serialData); }
+    catch { return [serialData]; }
   };
 
-  // 3. Format the data to match the "InvoiceProps" interface exactly
+  // Pass everything directly from the sale object — no calculations
   const formattedInvoiceData = {
-    invoiceNo: sale?.invoice_number || `INV-${sale?.id || 'Unknown'}`, 
-    date: sale?.date_sold ? new Date(sale.date_sold).toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
-    }) : "N/A",
+    invoiceNo:     sale?.invoice_number || sale?.invoiceNo || `INV-${sale?.id || "001"}`,
+    date:          sale?.date_sold || sale?.date || new Date().toLocaleDateString(),
+    paymentStatus: (sale?.payment_status || "").toLowerCase(),
+    totalCost:     parseFloat(sale?.total_cost || "0"),
+    taxAmount:     parseFloat(sale?.tax_amount || "0"),
+    initialDeposit: parseFloat(sale?.initial_deposit || "0"),
     customer: {
-      name: sale?.name || "Unknown Customer", 
-      address: sale?.state || "Lagos, Nigeria", 
+      name:    sale?.customer_name || sale?.name || "Unknown Customer",
+      address: sale?.state || "Lagos, Nigeria",
     },
-    // 🎯 CRITICAL FIX: Added (sale?.items || []) to prevent .map() crashes
-    items: (sale?.items || []).map((item: any) => ({
-      description: item?.equipment || "Unknown Item", 
-      equipment_type: item?.equipment_type || "N/A",
-      serials: safelyParseSerials(item?.serial_set),
-      qty: 1, 
-      rate: parseFloat(item?.cost || item?.price || "0"), // Added fallback for price/cost
-      discount: 0 
-    })),
-    paymentMade: sale?.payment_status === 'completed' 
-      ? parseFloat(sale?.total_cost || "0") 
-      : parseFloat(sale?.initial_deposit || "0") 
+    items: Array.isArray(sale?.items) && sale.items.length > 0
+      ? sale.items.map((item: any) => ({
+          description:    item?.equipment || item?.description || "Equipment Purchase",
+          equipment_type: item?.equipment_type || item?.category || "",
+          serials:        safelyParseSerials(item?.serial_set || item?.serials),
+          qty:            item?.quantity || item?.qty || 1,
+          cost:           parseFloat(item?.cost || item?.amount || item?.rate || "0"),
+        }))
+      : [{
+          description:    sale?.equipment || "Equipment Purchase",
+          equipment_type: "",
+          serials:        [],
+          qty:            1,
+          cost:           parseFloat(sale?.total_cost || "0"),
+        }],
   };
 
   return (
     <DashboardLayout>
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          @media print {
+            .print-hidden,
+            nav, header, aside, footer,
+            [data-sidebar], [data-radix-popper-content-wrapper] {
+              display: none !important;
+            }
+            body, html {
+              background: white !important;
+              margin: 0 !important;
+              padding: 0 !important;
+            }
+            body > div, #root > div, main {
+              all: unset !important;
+              display: block !important;
+            }
+            .print-area {
+              position: fixed !important;
+              top: 0 !important;
+              left: 0 !important;
+              width: 100vw !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              background: white !important;
+              z-index: 9999 !important;
+            }
+            #printable-invoice {
+              max-width: 100% !important;
+              width: 100% !important;
+              margin: 0 !important;
+              padding: 20mm 15mm !important;
+              box-shadow: none !important;
+            }
+          }
+        `,
+      }} />
+
       <div className="flex flex-col gap-4 max-w-5xl mx-auto">
-        {/* Navigation & Print Actions (Hidden on paper) */}
-        <div className="flex justify-between items-center bg-slate-800/40 p-4 rounded-lg border border-slate-700 print:hidden">
+        <div className="flex justify-between items-center bg-slate-800/40 p-4 rounded-lg border border-slate-700 print-hidden">
           <Button variant="ghost" onClick={() => navigate(-1)} className="text-gray-300">
             <ArrowLeft className="w-4 h-4 mr-2" /> Back
           </Button>
-          <Button 
-            onClick={() => window.print()} 
+          <Button
+            onClick={() => window.print()}
             className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
           >
             <Printer className="w-4 h-4 mr-2" /> Print Invoice
           </Button>
         </div>
 
-        {/* 🚀 Passing the 'data' prop safely */}
-        <div className="print:m-0">
+        <div className="print-area">
           <InvoiceTemplate data={formattedInvoiceData} />
         </div>
       </div>

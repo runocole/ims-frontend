@@ -24,7 +24,6 @@ import { EditStatusDialog } from "./components/EditStatusDialog";
 import { ViewSerialsDialog } from "./components/ViewSerialsDialog";
 import { useStaffList } from "../../hooks/useStaffList";
 
-
 export default function SalesPage() {
   const navigate = useNavigate();
 
@@ -50,7 +49,6 @@ export default function SalesPage() {
     soldSerials: any[];
   }>({ open: false, tool: null, soldSerials: [] });
 
-
   const { staffList } = useStaffList();
   const {
     customers, tools, groupedTools, setGroupedTools,
@@ -63,6 +61,20 @@ export default function SalesPage() {
   } = useSaleForm();
 
   const { assignRandomTool } = useToolAssignment();
+
+  // ── Browser Tab Close Safety Net ──
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // If there are items in the cart, warn the user before they leave
+      if (saleItems.length > 0) {
+        e.preventDefault();
+        e.returnValue = ""; 
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [saleItems]);
 
   // ── React Query — includes showDrafts in key so it refetches on toggle ──
   const { data: salesData, isLoading, refetch, isFetching } = useQuery({
@@ -164,7 +176,6 @@ export default function SalesPage() {
       payment_months: saleDetails.payment_months || null,
       due_date: calculatedDueDate,
       date_sold: new Date().toISOString().split("T")[0],
-      // Explicitly send the status — backend will honour 'pending'
       payment_status: status,
     };
   };
@@ -190,9 +201,7 @@ export default function SalesPage() {
   };
 
   // ── Main save handler ──
-  // action: "draft" | "send" | "cancel"
   const handleSaveSale = async (action: "draft" | "send" | "cancel") => {
-
     // Cancel with no items — just close
     if (action === "cancel" && saleItems.length === 0) {
       resetDialog();
@@ -265,99 +274,114 @@ export default function SalesPage() {
     }
   };
 
-  // ── Resume a draft — pre-fills customer and staff, opens dialog ──
-  const handleResumeDraft = async (sale: Sale) => {
-  try {
-    // 1. Fetch the full draft sale with all items from the backend
-    const token = localStorage.getItem("access") || localStorage.getItem("token");
-    const res = await axios.get(`https://inventory.oticgs.com/api/sales/${sale.id}/`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const fullSale = res.data;
-
-    // 2. Pre-fill customer
-    setSelectedCustomer({
-      id: fullSale.id,
-      name: fullSale.name,
-      phone: fullSale.phone,
-      email: "",
-      state: fullSale.state,
-    });
-
-    // 3. Pre-fill staff
-    setSelectedStaff(fullSale.staff || "");
-
-    // 4. Pre-fill payment details
-    updateSaleDetails({
-      payment_plan: fullSale.payment_plan || "No",
-      initial_deposit: fullSale.initial_deposit
-        ? String(fullSale.initial_deposit)
-        : "",
-      payment_months: fullSale.payment_months
-        ? String(fullSale.payment_months)
-        : "",
-    });
-
-    // 5. Restore all sale items from the draft
-    // These serials are already assigned in the DB so no new assignment needed
-    if (fullSale.items && fullSale.items.length > 0) {
-      fullSale.items.forEach((item: any) => {
-        addItem({
-          id: window.crypto.randomUUID(),
-          tool_id: item.tool_id || item.assigned_tool_id,
-          equipment: item.equipment,
-          equipment_type: item.equipment_type || "",
-          cost: String(item.cost),
-          category: item.category,
-          serial_set: item.serial_set || [],
-          assigned_tool_id: item.assigned_tool_id || item.tool_id,
-          import_invoice: item.import_invoice || "",
-        });
-      });
+  // ── Dialog Close Interceptor ──
+  const handleDialogClose = (isOpen: boolean) => {
+    // If the modal is trying to close AND there are items in the cart
+    if (!isOpen && saleItems.length > 0) {
+      // Trigger the Cancel/Save-to-Draft logic instead of letting it vanish
+      handleSaveSale("cancel");
+    } else {
+      // Otherwise, just open or close normally
+      setOpen(isOpen);
     }
-
-    // 6. Open the dialog
-    setOpen(true);
-
-    // 7. Delete the draft sale from DB since we're resuming it
-    // This prevents duplicate records — the user will Save & Send to create a fresh one
-    await axios.delete(`https://inventory.oticgs.com/api/sales/${sale.id}/`,{
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    refetch();
-
-    toast(
-      `Resuming draft for ${fullSale.name}. Items restored — click Save & Send when ready.`,
-      { icon: "▶️", duration: 6000 }
-    );
-  } catch (err: any) {
-    toast.error("Failed to resume draft. Please try again.");
-    console.error(err);
-  }
-};
-
-const handleDeleteDraft = async (sale: Sale) => {
-  try {
-    const token = localStorage.getItem("access") || localStorage.getItem("token");
-    await axios.delete(`https://inventory.oticgs.com/api/sales/${sale.id}/`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    refetch();
-    toast.success("Draft deleted. Items returned to inventory.");
-  } catch {
-    toast.error("Failed to delete draft.");
-  }
-};
-
-  const handleRemoveItem = async (index: number) => {
-    const itemToRemove = saleItems[index];
-    if (!itemToRemove.assigned_tool_id) { removeItem(index); return; }
-    try {
-      await api.restoreSerials(itemToRemove.assigned_tool_id, itemToRemove.serial_set || []);
-      removeItem(index);
-    } catch { removeItem(index); }
   };
 
+  // ── Resume a draft ──
+  const handleResumeDraft = async (sale: Sale) => {
+    try {
+      const token = localStorage.getItem("access") || localStorage.getItem("token");
+      const res = await axios.get(`https://inventory.oticgs.com/api/sales/${sale.id}/`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const fullSale = res.data;
+
+      setSelectedCustomer({
+        id: fullSale.id,
+        name: fullSale.name,
+        phone: fullSale.phone,
+        email: "",
+        state: fullSale.state,
+      });
+
+      setSelectedStaff(fullSale.staff || "");
+
+      updateSaleDetails({
+        payment_plan: fullSale.payment_plan || "No",
+        initial_deposit: fullSale.initial_deposit ? String(fullSale.initial_deposit) : "",
+        payment_months: fullSale.payment_months ? String(fullSale.payment_months) : "",
+      });
+
+      if (fullSale.items && fullSale.items.length > 0) {
+        fullSale.items.forEach((item: any) => {
+          addItem({
+            id: window.crypto.randomUUID(),
+            tool_id: item.tool_id || item.assigned_tool_id,
+            equipment: item.equipment,
+            equipment_type: item.equipment_type || "",
+            cost: String(item.cost),
+            category: item.category,
+            serial_set: item.serial_set || [],
+            assigned_tool_id: item.assigned_tool_id || item.tool_id,
+            import_invoice: item.import_invoice || "",
+          });
+        });
+      }
+
+      setOpen(true);
+
+      await axios.delete(`https://inventory.oticgs.com/api/sales/${sale.id}/`,{
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      refetch();
+
+      toast(
+        `Resuming draft for ${fullSale.name}. Items restored — click Save & Send when ready.`,
+        { icon: "▶️", duration: 6000 }
+      );
+    } catch (err: any) {
+      toast.error("Failed to resume draft. Please try again.");
+      console.error(err);
+    }
+  };
+
+  // ── Delete a draft ──
+  const handleDeleteDraft = async (sale: Sale) => {
+    try {
+      const token = localStorage.getItem("access") || localStorage.getItem("token");
+      await axios.delete(`https://inventory.oticgs.com/api/sales/${sale.id}/`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      refetch();
+      toast.success("Draft deleted. Items returned to inventory.");
+    } catch {
+      toast.error("Failed to delete draft.");
+    }
+  };
+
+  // ── Remove Middle Card Item ──
+  const handleRemoveItem = async (index: number) => {
+    const itemToRemove = saleItems[index];
+    
+    // If no serials were assigned yet, just remove it from UI
+    if (!itemToRemove.assigned_tool_id) { 
+      removeItem(index); 
+      return; 
+    }
+    
+    try {
+      // Attempt to return the serials to the database
+      await api.restoreSerials(itemToRemove.assigned_tool_id, itemToRemove.serial_set || []);
+      
+      // ONLY remove from the screen if the database confirms it succeeded
+      removeItem(index);
+    } catch (error) {
+      // DO NOT remove from the UI here. Show a warning instead.
+      console.error("Failed to restore item:", error);
+      toast.error("Network glitch: Could not return item to inventory. Please try again.");
+    }
+  };
+
+  // ── PDF Export ──
   const exportPDF = () => {
     const doc = new jsPDF();
     autoTable(doc, {
@@ -407,10 +431,11 @@ const handleDeleteDraft = async (sale: Sale) => {
 
         <AddSaleDialog
           open={open}
-          onOpenChange={setOpen}
+          onOpenChange={handleDialogClose} // <--- Intercepts background clicks and ESC key
           selectedCustomer={selectedCustomer}
           currentItem={currentItem}
           groupedTools={groupedTools}
+          filteredGroupedTools={groupedTools}
           saleItems={saleItems}
           saleDetails={saleDetails}
           subtotal={subtotal}
@@ -449,7 +474,6 @@ const handleDeleteDraft = async (sale: Sale) => {
             finally { setIsSubmitting(false); }
           }}
           onRemoveItem={handleRemoveItem}
-          filteredGroupedTools={groupedTools}
           onPaymentPlanChange={(v) => updateSaleDetails({ payment_plan: v })}
           onInitialDepositChange={(v) => updateSaleDetails({ initial_deposit: v })}
           onPaymentMonthsChange={(v) => updateSaleDetails({ payment_months: v })}

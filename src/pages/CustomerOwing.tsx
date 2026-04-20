@@ -169,6 +169,13 @@ const [showRevenue, setShowRevenue] = useState(false);
     setCurrentPage(1);
   }, [filter, searchQuery]);
 
+  useEffect(() => {
+  const interval = setInterval(() => {
+    loadData(false);
+  }, 30000);
+  return () => clearInterval(interval);
+}, [loadData]);
+
   // ------------------------------
   // MANUAL SYNC
   // ------------------------------
@@ -305,7 +312,7 @@ const [showRevenue, setShowRevenue] = useState(false);
         {/* Stats Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <StatsCard
-            title="Total Money"
+            title="Total Revenue"
             value={isAdmin && showRevenue
               ? formatCurrency(customerData?.summary?.totalSellingPrice || 0)
               : "₦ ••••••"}

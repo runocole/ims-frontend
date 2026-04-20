@@ -79,14 +79,14 @@ const PrivateRoute: React.FC<{ element: React.ReactElement; allowedRoles?: strin
   console.log("Allowed roles:", allowedRoles);
 
 
-  if (!token) return <Navigate to="/login" replace />;
+  if (!token) return <Navigate to="/inventory" replace />;
 
   if (allowedRoles && !allowedRoles.includes(role)) {
     // Redirect loop protection
     if (role === "admin") return <Navigate to="/dashboard" replace />;
     if (role === "staff") return <Navigate to="/staff/dashboard" replace />;
     if (role === "customer") return <Navigate to="/customer/dashboard" replace />;
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/inventory" replace />;
   }
 
   return element;

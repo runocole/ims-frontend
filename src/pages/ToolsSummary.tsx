@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { getTools } from "../services/api";
+import axios from "axios";
 import { Button } from "../components/ui/button";
 import { DashboardLayout } from "../components/DashboardLayout";
 import { Card, CardContent } from "../components/ui/card";
@@ -114,6 +115,9 @@ const ToolsSummary: React.FC = () => {
   const [selectedInvoice, setSelectedInvoice] = useState<{invoiceNo: string, boxType: string} | null>(null);
   const [serialSearch, setSerialSearch] = useState("");
 
+  // ✅ State for tracking true sold items count from sales API
+  const [trueSoldItemsCount, setTrueSoldItemsCount] = useState(0);
+
   // URL search parameters state
   const [urlSearchQuery, setUrlSearchQuery] = useState("");
   const [urlSearchType, setUrlSearchType] = useState<"serial" | "invoice" | "">("");
@@ -131,7 +135,7 @@ const ToolsSummary: React.FC = () => {
   });
 
   // --------------------
-  // FIXED: URL SEARCH PARAMETER HANDLING
+  // URL SEARCH PARAMETER HANDLING
   // --------------------
   useEffect(() => {
     try {
@@ -189,7 +193,7 @@ const ToolsSummary: React.FC = () => {
   };
 
   // --------------------
-  // FIXED: CHECK IF ITEM MATCHES URL SEARCH
+  // CHECK IF ITEM MATCHES URL SEARCH
   // --------------------
   const isItemHighlighted = (tool: Tool) => {
     if (!urlSearchQuery || !tool) return false;
@@ -198,54 +202,27 @@ const ToolsSummary: React.FC = () => {
     if (!query) return false;
     
     try {
-      // Search in tool name
-      if (tool.name && tool.name.toLowerCase().includes(query)) {
-        return true;
-      }
+      if (tool.name && tool.name.toLowerCase().includes(query)) return true;
+      if (tool.code && tool.code.toLowerCase().includes(query)) return true;
+      if (tool.invoice_number && tool.invoice_number.toLowerCase().includes(query)) return true;
+      if (tool.supplier_name && tool.supplier_name.toLowerCase().includes(query)) return true;
+      if (tool.box_type && tool.box_type.toLowerCase().includes(query)) return true;
       
-      // Search in code
-      if (tool.code && tool.code.toLowerCase().includes(query)) {
-        return true;
-      }
-      
-      // Search in invoice number
-      if (tool.invoice_number && tool.invoice_number.toLowerCase().includes(query)) {
-        return true;
-      }
-      
-      // Search in supplier name
-      if (tool.supplier_name && tool.supplier_name.toLowerCase().includes(query)) {
-        return true;
-      }
-      
-      // Search in box type
-      if (tool.box_type && tool.box_type.toLowerCase().includes(query)) {
-        return true;
-      }
-      
-      // Search in serial numbers
       if (tool.serials) {
         if (isSerialObject(tool.serials)) {
           const serialValues = Object.values(tool.serials);
-          if (serialValues.some((serial: any) => 
-            serial && serial.toString().toLowerCase().includes(query)
-          )) {
+          if (serialValues.some((serial: any) => serial && serial.toString().toLowerCase().includes(query))) {
             return true;
           }
         } else if (Array.isArray(tool.serials)) {
-          if (tool.serials.some((serial: any) => 
-            serial && serial.toString().toLowerCase().includes(query)
-          )) {
+          if (tool.serials.some((serial: any) => serial && serial.toString().toLowerCase().includes(query))) {
             return true;
           }
         }
       }
       
-      // Search in available serials array
       if (tool.available_serials && Array.isArray(tool.available_serials)) {
-        if (tool.available_serials.some((serial: string) => 
-          serial.toLowerCase().includes(query)
-        )) {
+        if (tool.available_serials.some((serial: string) => serial.toLowerCase().includes(query))) {
           return true;
         }
       }
@@ -296,16 +273,22 @@ const ToolsSummary: React.FC = () => {
   };
 
   // --------------------
-  // LOAD TOOLS
+  // ✅ FIXED: LOAD TOOLS AND SALES DATA (with better error handling)
   // --------------------
   useEffect(() => {
     let mounted = true;
-    (async () => {
+    
+    const loadData = async () => {
       try {
-        const data = await getTools();
-        if (!mounted) return;
+        // First, load tools data (this is critical)
+        console.log("Fetching tools data...");
+        const toolsData = await getTools();
+        console.log("Tools data received:", toolsData?.length || 0, "items");
         
-        const normalized: Tool[] = (data || []).map((t: any) => {
+        if (!mounted) return;
+
+        // Process tools data FIRST before attempting sales fetch
+        const normalized: Tool[] = (toolsData || []).map((t: any) => {
           let serialsData: SerialNumbers = {};
           
           if (t.serials && Array.isArray(t.serials)) {
@@ -373,12 +356,58 @@ const ToolsSummary: React.FC = () => {
         });
         
         setTools(normalized);
+        console.log("Tools processed successfully");
+// Fetch sold items count — count SaleItem records excluding pending drafts
+        try {
+          const token = localStorage.getItem("access") || localStorage.getItem("token");
+          if (token) {
+            const API_URL = "https://inventory.oticgs.com/api";
+
+            // Fetch page 1 of sales to get the total count from pagination
+            // and sum up items across all non-pending sales
+            const salesResponse = await axios.get(`${API_URL}/sales/`, {
+              headers: { Authorization: `Bearer ${token}` },
+              params: { page: 1, page_size: 1000 },
+            }).catch(err => {
+              console.warn("Sales API fetch failed:", err.message);
+              return { data: { results: [], count: 0 } };
+            });
+
+            if (mounted) {
+              const results = Array.isArray(salesResponse.data?.results)
+                ? salesResponse.data.results
+                : Array.isArray(salesResponse.data)
+                ? salesResponse.data
+                : [];
+
+              // Count every SaleItem across all non-draft sales
+              // Each item in the items array = 1 sold unit
+              let totalSold = 0;
+              results.forEach((sale: any) => {
+                const status = (sale.payment_status || "").toLowerCase();
+                if (status === "pending") return; // skip drafts
+                const items = Array.isArray(sale.items) ? sale.items : [];
+                totalSold += items.length;
+              });
+
+              setTrueSoldItemsCount(totalSold);
+            }
+          }
+        } catch (salesError) {
+          console.error("Error fetching sales data:", salesError);
+        }
+        
       } catch (err) {
         console.error("Failed to load tools:", err);
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
-    })();
+    };
+    
+    loadData();
+    
     return () => {
       mounted = false;
     };
@@ -445,7 +474,7 @@ const ToolsSummary: React.FC = () => {
   }, [tools]);
 
   // --------------------
-  // FIXED: GROUPED DATA
+  // GROUPED DATA
   // --------------------
   const grouped = useMemo(() => {
     try {
@@ -477,7 +506,7 @@ const ToolsSummary: React.FC = () => {
           );
         
         const lowStockMatch = !lowStockOnly || t.stock < 5;
-        const hasStock = t.stock > 0; 
+        const hasStock = t.stock >= 0; 
         
         return categoryMatch && qMatch && lowStockMatch && hasStock; 
       });
@@ -496,6 +525,8 @@ const ToolsSummary: React.FC = () => {
       >();
 
       for (const t of filtered) {
+        if (t.stock === 0) continue;
+
         const category = t.category || "Uncategorized";
         if (!map.has(category)) map.set(category, []);
 
@@ -556,13 +587,8 @@ const ToolsSummary: React.FC = () => {
     [tools]
   );
 
-  const totalSoldSerials = useMemo(
-    () => tools.reduce((acc, tool) => acc + (tool.sold_serials?.length || 0), 0),
-    [tools]
-  );
-
   // --------------------
-  // EXPORT FUNCTIONS (unchanged)
+  // EXPORT FUNCTIONS
   // --------------------
   const exportPDF = () => {
     const doc = new jsPDF();
@@ -570,7 +596,7 @@ const ToolsSummary: React.FC = () => {
     doc.text("Inventory Summary", 14, 15);
     doc.setFontSize(10);
     doc.text(`Exported: ${new Date().toLocaleString()}`, 14, 22);
-    doc.text(`Total Available Serials: ${totalAvailableSerials} | Total Sold Serials: ${totalSoldSerials}`, 14, 28);
+    doc.text(`Total Available Serials: ${totalAvailableSerials} | Total Sold Items: ${trueSoldItemsCount}`, 14, 28);
 
     const body: any[] = [];
     grouped.forEach((cat) => {
@@ -650,8 +676,6 @@ const ToolsSummary: React.FC = () => {
         item.invoice_number || "—",
         formatDate(item.date_added),
         formatDate(item.expiry_date),
-        item.available_serials?.length || 0,
-        item.sold_serials?.length || 0,
       ]);
     });
 
@@ -764,7 +788,7 @@ const ToolsSummary: React.FC = () => {
   };
 
   // --------------------
-  // FIXED: RENDER MAIN TABLE
+  // RENDER MAIN TABLE
   // --------------------
   const renderMainTable = () => {
     if (grouped.length === 0) {
@@ -1322,8 +1346,8 @@ const ToolsSummary: React.FC = () => {
               </Card>
               <Card className="border-border bg-blue-950">
                 <CardContent className="p-4">
-                  <p className="text-sm text-gray-400">Sold Items</p>
-                  <h3 className="text-2xl font-bold text-blue-400">{totalSoldSerials}</h3>
+                  <p className="text-sm text-gray-400">Total Sold Items</p>
+                  <h3 className="text-2xl font-bold text-blue-400">{trueSoldItemsCount}</h3>
                 </CardContent>
               </Card>
             </div>

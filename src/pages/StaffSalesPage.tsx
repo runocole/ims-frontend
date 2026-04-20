@@ -6,7 +6,7 @@ import { Card, CardContent } from "../components/ui/card";
 import { DashboardLayout } from "../components/DashboardLayout";
 import axios from "axios";
 
-const API_URL = `${import.meta.env.VITE_API_URL}/api`;
+const API_URL = "https://inventory.oticgs.com/api";
 
 export default function StaffSalesPage() {
   // ✅ This grabs ALL params from the URL

@@ -291,11 +291,20 @@ export default function StaffDirectoryPage() {
   };
 
   const handleViewProfile = (staff: StaffMember) => {
-    navigate(`/sales/staff/${encodeURIComponent(staff.name)}`, {
-      state: { staffEmail: staff.email },
-    });
-  };
+  // Ensure we have a valid string to send to the URL
+  const nameToSearch = staff.name && staff.name !== "Unnamed Staff" 
+    ? staff.name 
+    : staff.email; 
+  
+  if (!nameToSearch) {
+    console.error("No valid name or email to navigate to.");
+    return;
+  }
 
+  navigate(`/sales/staff/${encodeURIComponent(nameToSearch)}`, {
+    state: { staffEmail: staff.email },
+  });
+};
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <DashboardLayout>

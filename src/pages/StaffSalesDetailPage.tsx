@@ -9,7 +9,7 @@ import { Card, CardContent } from "../components/ui/card";
 import { DashboardLayout } from "../components/DashboardLayout";
 import axios from "axios";
 
-const API_URL = `${import.meta.env.VITE_API_URL}/api`;
+const API_URL = "https://inventory.oticgs.com/api";
 
 // ------------------------------
 // TYPES
@@ -66,16 +66,24 @@ const AVATAR_COLORS = [
   "bg-indigo-600", "bg-pink-600",
 ];
 
+
+
 // ------------------------------
 // COMPONENT
 // ------------------------------
 export default function StaffSalesDetailPage() {
+  console.log("Current URL Params:", useParams());
   // ✅ FIXED: Read the encoded staff name directly from the URL param
   // Route is: /sales/staff/:staffName
   // StaffSalesPage navigates with: /sales/staff/Constance%20Akanueze
   // So decoding the param gives us exactly the name we need — no ID lookup required.
   const { staffName: encodedName } = useParams<{ staffName: string }>();
+
+  
+
   const staffName = decodeURIComponent(encodedName || "");
+
+  console.log("Decoded Staff Name being fetched:", staffName);
 
   const location = useLocation();
   const navigate = useNavigate();

@@ -12,43 +12,32 @@ const PurchasesPage: React.FC = () => {
   const { phone, invoice_number } = useParams<{ phone: string, invoice_number: string }>();
   const navigate = useNavigate();
   
-  // Data State
+  // --- STATE ---
   const [invoiceDetail, setInvoiceDetail] = useState<any>(null);
   const [invoicePayments, setInvoicePayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Payment Submission State
   const [paymentAmount, setPaymentAmount] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- EDIT STATE ---
   const [isEditingInvoice, setIsEditingInvoice] = useState(false);
   const [editInvoiceData, setEditInvoiceData] = useState({ total_cost: "", initial_deposit: "" });
   
   const [editingPaymentId, setEditingPaymentId] = useState<number | null>(null);
   const [editPaymentAmount, setEditPaymentAmount] = useState<string>("");
 
-  // Helper function to color-code the equipment type badge
+  // --- HELPERS ---
   const getBadgeStyle = (type?: string) => {
     if (!type) return "bg-slate-700/50 text-slate-300 border-slate-600";
-    
     const t = type.toLowerCase();
-    if (t.includes("base") && t.includes("rover")) {
-      return "bg-purple-900/50 text-purple-400 border-purple-800";
-    }
-    if (t.includes("base")) {
-      return "bg-blue-900/50 text-blue-400 border-blue-800";
-    }
-    if (t.includes("rover")) {
-      return "bg-teal-900/50 text-teal-400 border-teal-800";
-    }
-    if (t.includes("accessory") || t.includes("accessories")) {
-      return "bg-slate-700/50 text-slate-300 border-slate-600";
-    }
+    if (t.includes("base") && t.includes("rover")) return "bg-purple-900/50 text-purple-400 border-purple-800";
+    if (t.includes("base")) return "bg-blue-900/50 text-blue-400 border-blue-800";
+    if (t.includes("rover")) return "bg-teal-900/50 text-teal-400 border-teal-800";
+    if (t.includes("accessory") || t.includes("accessories")) return "bg-slate-700/50 text-slate-300 border-slate-600";
     return "bg-emerald-900/30 text-emerald-400 border-emerald-800/50";
   };
 
-  // --- Fetch Data ---
+  // --- DATA FETCHING ---
   const fetchInvoiceData = async () => {
     if (!phone || !invoice_number) return;
     setLoading(true);
@@ -58,7 +47,7 @@ const PurchasesPage: React.FC = () => {
 
     try {
       const [salesRes, paymentsRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/sales/?invoice=${invoice_number}`, { headers }),
+        fetch(`${API_BASE_URL}/sales/?search=${invoice_number}`, { headers }),
         fetch(`${API_BASE_URL}/payments/?phone=${phone}`, { headers })
       ]);
 
@@ -74,16 +63,14 @@ const PurchasesPage: React.FC = () => {
         p.invoice_number === invoice_number || p.sale === specificSale?.id
       );
 
-      // 🔥 AUTO-OVERDUE CHECK LOGIC 🔥
+      const uniquePayments = Array.from(new Map(filteredPayments.map((p: any) => [p.id, p])).values());
+
       if (specificSale && specificSale.payment_status === "ongoing") {
         const now = new Date();
-        
-        // 1. Check inactivity: Use 'date_sold' exactly as it comes from your Django backend
         let latestDateStr = specificSale.date_sold || now.toISOString();
         
-        if (filteredPayments.length > 0) {
-          const latestPayment = filteredPayments.reduce((latest: any, current: any) => {
-            // Adjusting to check standard payment date fields
+        if (uniquePayments.length > 0) {
+          const latestPayment: any = uniquePayments.reduce((latest: any, current: any): any => {
             const latestD = new Date(latest.payment_date || latest.created_at || 0);
             const currentD = new Date(current.payment_date || current.created_at || 0);
             return currentD > latestD ? current : latest;
@@ -91,49 +78,32 @@ const PurchasesPage: React.FC = () => {
           latestDateStr = latestPayment.payment_date || latestPayment.created_at || latestDateStr;
         }
 
-        const latestDate = new Date(latestDateStr);
-        // Calculate exact days difference
-        const daysSinceLastPayment = (now.getTime() - latestDate.getTime()) / (1000 * 3600 * 24);
+        const daysSinceLastPayment = (now.getTime() - new Date(latestDateStr).getTime()) / (1000 * 3600 * 24);
         const isInactiveOverdue = daysSinceLastPayment >= 90;
-
-        // 2. Check plan expiration: Use 'due_date' exactly as it comes from your Django backend
+        
         let isPlanOverdue = false;
         if (specificSale.due_date) {
-            const planDeadline = new Date(specificSale.due_date);
-            isPlanOverdue = now.getTime() > planDeadline.getTime();
+            isPlanOverdue = now.getTime() > new Date(specificSale.due_date).getTime();
         }
 
-        // If EITHER rule is broken, mark them as overdue!
         if (isInactiveOverdue || isPlanOverdue) {
           try {
-            const patchRes = await fetch(`${API_BASE_URL}/sales/${specificSale.id}/`, {
+            await fetch(`${API_BASE_URL}/sales/${specificSale.id}/`, {
               method: "PATCH",
-              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+              headers,
               body: JSON.stringify({ payment_status: "overdue" }), 
             });
-
-            if (patchRes.ok) {
-              specificSale.payment_status = "overdue"; // Update UI instantly
-              
-              if (isInactiveOverdue) {
-                 toast.error("Status updated to OVERDUE (No payments in 90 days).");
-              } else {
-                 toast.error("Status updated to OVERDUE (Payment plan expired).");
-              }
-            }
-          } catch (autoErr) {
-            console.error("Failed to auto-update overdue status", autoErr);
-          }
+            specificSale.payment_status = "overdue";
+          } catch (err) { console.error("Auto-update failed", err); }
         }
       }
-      // 🔥 END AUTO-OVERDUE LOGIC 🔥
 
       setInvoiceDetail(specificSale);
       setEditInvoiceData({
         total_cost: specificSale?.total_cost || "0",
         initial_deposit: specificSale?.initial_deposit || "0"
       });
-      setInvoicePayments(filteredPayments);
+      setInvoicePayments(uniquePayments);
 
     } catch (error) {
       toast.error("Failed to fetch invoice details.");
@@ -146,27 +116,30 @@ const PurchasesPage: React.FC = () => {
     fetchInvoiceData();
   }, [phone, invoice_number]);
 
-  // Calculations
-  const initialDeposit = parseFloat(invoiceDetail?.initial_deposit || "0");
-const totalSubsequentPayments = invoicePayments.reduce(
+ // ─── CALCULATIONS ───────────────────────────────────────────
+const totalCost = parseFloat(invoiceDetail?.total_cost || "0");
+
+// 1. True initial deposit — never changes after sale
+const trueDeposit = parseFloat(invoiceDetail?.initial_deposit || "0");
+
+// 2. Sum of all separately logged payment rows
+const totalLoggedPayments = invoicePayments.reduce(
   (acc: number, p: any) => acc + parseFloat(p.amount || "0"), 0
 );
-const totalCost = parseFloat(invoiceDetail?.total_cost || "0");
+
+// 3. True total paid = initial deposit + all logged payments
+const totalPaid = trueDeposit + totalLoggedPayments;
+
+// 4. For display in the timeline — the original deposit row
+const trueInitialDeposit = trueDeposit;
+
+// 5. Outstanding balance
 const isMarkedCompleted = ["completed", "paid", "fully-paid"].includes(
   (invoiceDetail?.payment_status || "").toLowerCase()
 );
-
-// If sale is marked completed but no deposit or payments recorded,
-// treat the full amount as paid (upfront full payment with no deposit logged)
-const totalPaid = (() => {
-  const recorded = initialDeposit + totalSubsequentPayments;
-  if (isMarkedCompleted && recorded === 0) return totalCost;
-  return recorded;
-})();
-
 const currentBalance = isMarkedCompleted ? 0 : Math.max(totalCost - totalPaid, 0);
 
-  // --- UPDATE INVOICE DETAILS ---
+  // --- HANDLERS ---
   const handleUpdateInvoice = async () => {
     const token = localStorage.getItem("access") || localStorage.getItem("token");
     try {
@@ -180,15 +153,10 @@ const currentBalance = isMarkedCompleted ? 0 : Math.max(totalCost - totalPaid, 0
         toast.success("Invoice updated successfully!");
         setIsEditingInvoice(false);
         fetchInvoiceData();
-      } else {
-        toast.error("Failed to update invoice.");
-      }
-    } catch (error) {
-      toast.error("Network error.");
-    }
+      } else toast.error("Failed to update invoice.");
+    } catch (error) { toast.error("Network error."); }
   };
 
-  // --- UPDATE A SPECIFIC PAYMENT ---
   const handleUpdatePayment = async (paymentId: number) => {
     const token = localStorage.getItem("access") || localStorage.getItem("token");
     try {
@@ -202,16 +170,13 @@ const currentBalance = isMarkedCompleted ? 0 : Math.max(totalCost - totalPaid, 0
         toast.success("Payment log updated!");
         setEditingPaymentId(null);
         fetchInvoiceData();
-      } else {
-        toast.error("Failed to update payment.");
-      }
-    } catch (error) {
-      toast.error("Network error.");
-    }
+      } else toast.error("Failed to update payment.");
+    } catch (error) { toast.error("Network error."); }
   };
 
-  // --- ADD NEW PAYMENT ---
   const handleLogNewPayment = async () => {
+    if (isSubmitting) return; 
+
     const amount = parseFloat(paymentAmount || "0");
     if (amount <= 0 || isNaN(amount)) return toast.error("Please enter a valid amount");
 
@@ -228,69 +193,41 @@ const currentBalance = isMarkedCompleted ? 0 : Math.max(totalCost - totalPaid, 0
     };
 
     try {
+      // 1. Log payment — perform_create handles sale status update automatically
       const response = await fetch(`${API_BASE_URL}/payments/`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify(newPaymentLog),
       });
 
-      if (response.ok) {
-        const createdPayment = await response.json(); 
-        
-        setPaymentAmount("");
-        setInvoicePayments(prev => [...prev, createdPayment]);
+      if (!response.ok) throw new Error("Failed to log payment.");
 
-        const newTotalPaid = totalPaid + amount;
-        const newInvoiceStatus = newTotalPaid >= totalCost ? "completed" : "ongoing";
-        
-        try {
-          const patchRes = await fetch(`${API_BASE_URL}/sales/${invoiceDetail.id}/`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-            body: JSON.stringify({ payment_status: newInvoiceStatus }), 
-          });
-
-          if (patchRes.ok) {
-            if (newInvoiceStatus === "completed") {
-  toast.success("Balance cleared! Invoice marked as Completed.");
-} else {
-  toast.success("Payment logged! Invoice marked as Ongoing.");
-}
-setInvoiceDetail((prev: any) => prev ? { ...prev, payment_status: newInvoiceStatus } : prev);
-
-// ✅ Auto-sync customer financials so CustomerOwingPage
-// reflects this payment immediately without manual sync
-try {
-  await fetch(`${API_BASE_URL}/customers/sync-financials/`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`
-    },
-  });
-} catch (syncErr) {
-  // Sync failure is silent — payment was already saved successfully
-  console.warn("Background sync failed:", syncErr);
-}
-          } else {
-            console.error("Failed to patch invoice status. Make sure 'ongoing' is in Django choices.");
-            toast.success("Payment saved, but failed to update invoice status.");
-          }
-        } catch (patchErr) {
-          console.error("Failed to auto-update invoice status", patchErr);
-          toast.error("Payment saved, but network error updating invoice status.");
-        }
-        
-      } else {
-        toast.error("Failed to log payment.");
+      // 2. Sync this specific customer only — faster and more reliable
+      // The backend perform_create already updated sale status so this
+      // reads the correct fresh data
+      try {
+        await fetch(`${API_BASE_URL}/customers/sync-financials/?phone=${encodeURIComponent(phone || "")}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        });
+      } catch (err) {
+        console.warn("Sync failed silently:", err);
       }
-    } catch (error) {
-      toast.error("Network error.");
+
+      toast.success("Payment logged!");
+      setPaymentAmount("");
+      
+      // 3. Refetch pure truth from DB
+      await fetchInvoiceData();
+
+    } catch (error: any) {
+      toast.error(error.message || "Network error.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // --- RENDER ---
   if (loading) return <DashboardLayout><div className="flex justify-center py-20"><Loader2 className="w-10 h-10 text-emerald-500 animate-spin" /></div></DashboardLayout>;
 
   if (!invoiceDetail) return (
@@ -356,7 +293,8 @@ try {
             ) : (
               <div>
                 <p className="text-sm text-gray-300">Total: <span className="text-white font-bold font-mono">₦{totalCost.toLocaleString()}</span></p>
-                <p className="text-sm text-gray-300">Deposit: <span className="text-white font-bold font-mono">₦{initialDeposit.toLocaleString()}</span></p>
+                {/* Changed label from "Deposit" to "Total Paid" to accurately reflect backend data */}
+                <p className="text-sm text-gray-300">Total Paid: <span className="text-white font-bold font-mono">₦{totalPaid.toLocaleString()}</span></p>
               </div>
             )}
           </div>
@@ -380,9 +318,8 @@ try {
             <div className="p-5 space-y-3">
               {invoiceDetail.items?.map((item: any, idx: number) => (
                 <div key={idx} className="bg-slate-800/60 p-4 rounded-xl border border-slate-700/50 flex justify-between items-center gap-4">
-                  <div className="flex flex-col gap-2 flex-grow">
+                  <div className="flex flex-col gap-2 grow">
                     <div className="text-white text-base font-bold">{item.equipment || "Unnamed Equipment"}</div>
-                    
                     <div className="flex flex-wrap gap-2 items-center">
                       <span className={`w-fit px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${getBadgeStyle(item.equipment_type)}`}>
                         {item.equipment_type || "Accessory"}
@@ -393,7 +330,7 @@ try {
                     </div>
                   </div>
                   
-                  <div className="text-emerald-400 bg-emerald-950/30 border border-emerald-900/50 px-3 py-2 rounded-lg font-mono font-bold text-right min-w-[100px]">
+                  <div className="text-emerald-400 bg-emerald-950/30 border border-emerald-900/50 px-3 py-2 rounded-lg font-mono font-bold text-right max-w-37.5">
                     <div className="text-[9px] text-emerald-500/70 uppercase tracking-wider mb-0.5">Unit Price</div>
                     ₦{parseFloat(item.price || item.unit_price || item.amount || item.cost || "0").toLocaleString()}
                   </div>
@@ -412,10 +349,10 @@ try {
               <span className="text-sm font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-md">Paid: ₦{totalPaid.toLocaleString()}</span>
             </div>
             
-            <div className="p-5 space-y-3 flex-grow overflow-y-auto max-h-[400px]">
+            <div className="p-5 space-y-3 grow overflow-y-auto max-h-100">
               
-              {/* --- ADDED INITIAL DEPOSIT CARD --- */}
-              {initialDeposit > 0 && (
+              {/* --- INITIAL DEPOSIT ROW --- */}
+              {trueInitialDeposit > 0 && (
                 <div className="flex justify-between items-center bg-slate-800 border border-slate-700 p-4 rounded-xl">
                   <div>
                     <div className="flex items-center gap-2">
@@ -431,8 +368,7 @@ try {
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-emerald-400 font-bold font-mono">+ ₦{initialDeposit.toLocaleString()}</span>
-                    {/* Placeholder div to align visually with the edit button margins below */}
+                    <span className="text-emerald-400 font-bold font-mono">+ ₦{trueInitialDeposit.toLocaleString()}</span>
                     <div className="w-6 h-6"></div> 
                   </div>
                 </div>
@@ -477,7 +413,7 @@ try {
                 <Input 
                   type="number" 
                   placeholder="Enter amount to pay..."
-                  className="bg-slate-800 border-slate-700 text-white flex-grow h-12 disabled:opacity-50"
+                  className="bg-slate-800 border-slate-700 text-white grow h-12 disabled:opacity-50"
                   value={paymentAmount}
                   onChange={(e) => setPaymentAmount(e.target.value)}
                   disabled={currentBalance <= 0}
